@@ -79,6 +79,16 @@ CREATE TABLE IF NOT EXISTS logbook (
   time_out   TIMESTAMPTZ DEFAULT NULL
 );
 
+-- 5. SCORE LOGS TABLE (audit trail for merit/demerit actions)
+CREATE TABLE IF NOT EXISTS score_logs (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  team_id     BIGINT REFERENCES teams(id) ON DELETE CASCADE,
+  team_name   TEXT NOT NULL,
+  delta       INT NOT NULL,
+  reason      TEXT DEFAULT '',
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================
 -- DONE! Default admin: admin@isufst.edu / admin123
 -- ============================================

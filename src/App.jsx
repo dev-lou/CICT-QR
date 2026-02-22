@@ -7,6 +7,7 @@ import LogbookPage from './components/LogbookPage'
 import AdminLogin from './components/AdminLogin'
 import AdminScanner from './components/AdminScanner'
 import Scoreboard from './components/Scoreboard'
+import ScoreHistory from './components/ScoreHistory'
 
 // ─── Student Auth Guard ───────────────────────────────────────────────────────
 function StudentRoot() {
@@ -77,6 +78,7 @@ export default function App() {
             <Route path="/logbook" element={<LogbookRoute />} />
             <Route path="/admin" element={<AdminRoot />} />
             <Route path="/scoreboard-itweek2026" element={<Scoreboard />} />
+            <Route path="/score-history" element={<ScoreHistory />} />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     )

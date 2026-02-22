@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Html5Qrcode } from 'html5-qrcode'
 import { supabase } from '../lib/supabase'
+import Swal from 'sweetalert2'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -30,9 +31,10 @@ export default function AdminScanner({ onLogout }) {
     const [teamError, setTeamError] = useState('')
 
     // Scores state
-    const [scoreLog, setScoreLog] = useState([]) // { teamName, delta, reason, ts }
+    const [scoreLog, setScoreLog] = useState([]) // loaded from Supabase score_logs
     const [scoreReason, setScoreReason] = useState({})
     const [scoreLoading, setScoreLoading] = useState(false)
+    const [submitting, setSubmitting] = useState(new Set()) // team IDs currently being saved
 
     const dismissModal = () => {
         setScanModal(null)
@@ -74,6 +76,19 @@ export default function AdminScanner({ onLogout }) {
             .subscribe()
         return () => { supabase.removeChannel(channel) }
     }, [fetchLogbook])
+
+    // ─── Score Logs ──────────────────────────────────────────────────────────────
+    const fetchScoreLogs = useCallback(async () => {
+        if (!supabase) return
+        const { data } = await supabase
+            .from('score_logs')
+            .select('id, team_name, delta, reason, created_at')
+            .order('created_at', { ascending: false })
+            .limit(5)
+        if (data) setScoreLog(data)
+    }, [])
+
+    useEffect(() => { fetchScoreLogs() }, [fetchScoreLogs])
 
     // ─── Teams ──────────────────────────────────────────────────────────────────
     const fetchTeams = useCallback(async () => {
@@ -377,13 +392,14 @@ export default function AdminScanner({ onLogout }) {
             <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1rem 1rem 0' }}>
                 <div className="tab-nav">
                     {[
-                        { id: 'scanner', label: '📷 Scanner' },
-                        { id: 'logbook', label: '📋 Logbook' },
-                        { id: 'teams', label: '👥 Teams' },
-                        { id: 'scores', label: '🏆 Scores' },
+                        { id: 'scanner', icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" /></svg>, label: 'Scanner' },
+                        { id: 'logbook', icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>, label: 'Logbook' },
+                        { id: 'teams', icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>, label: 'Teams' },
+                        { id: 'scores', icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><polyline points="8 6 12 2 16 6" /><line x1="12" y1="2" x2="12" y2="15" /><path d="M20 15H4a2 2 0 000 4h16a2 2 0 000-4z" /></svg>, label: 'Scores' },
                     ].map((tab) => (
-                        <button key={tab.id} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
-                            {tab.label}
+                        <button key={tab.id} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                            {tab.icon}{tab.label}
                         </button>
                     ))}
                 </div>
@@ -654,7 +670,7 @@ export default function AdminScanner({ onLogout }) {
                             {/* Info card */}
                             <div className="card" style={{ padding: '1rem 1.25rem', background: '#eef2ff', border: '1.5px solid #c7d2fe' }}>
                                 <p style={{ fontSize: '0.8125rem', color: '#4f46e5', fontWeight: 600 }}>
-                                    🏆 Teams start at <strong>150 pts</strong>. Type any points in the field, then click <strong>＋ Merit</strong> to add or <strong>－ Demerit</strong> to subtract (min 0).
+                                    Teams start at <strong>150 pts</strong>. Type any points in the field, then click <strong>+ Merit</strong> to add or <strong>− Demerit</strong> to subtract (min 0).
                                 </p>
                                 <motion.button
                                     whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
@@ -662,6 +678,13 @@ export default function AdminScanner({ onLogout }) {
                                     style={{ marginTop: '0.75rem', width: '100%', padding: '0.75rem', borderRadius: '0.75rem', background: 'linear-gradient(135deg,#6366f1,#06b6d4)', border: 'none', color: 'white', fontWeight: 700, fontSize: '0.9375rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                     Open Scoreboard (Full Screen)
+                                </motion.button>
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                                    onClick={() => window.open('/score-history', '_blank')}
+                                    style={{ marginTop: '0.5rem', width: '100%', padding: '0.625rem', borderRadius: '0.75rem', background: 'white', border: '1.5px solid #c7d2fe', color: '#4f46e5', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                                    View Full Score History
                                 </motion.button>
                             </div>
 
@@ -671,22 +694,44 @@ export default function AdminScanner({ onLogout }) {
                             ) : [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).map((team, idx) => {
                                 const score = team.score ?? 150
                                 const pct = Math.min((score / 150) * 100, 100)
-                                const rank = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`
+                                const rankColors = ['#f59e0b', '#94a3b8', '#d97706']
+                                const rankLabel = idx < 3 ? idx + 1 : `#${idx + 1}`
+                                const rankBg = idx < 3 ? rankColors[idx] : '#e2e8f0'
+                                const rankTextColor = idx < 3 ? 'white' : '#64748b'
                                 const pts = parseInt(scoreReason[team.id + '_pts'] || '10', 10) || 10
                                 const applyScore = async (delta) => {
-                                    if (!supabase) return
-                                    const newScore = Math.max(0, score + delta)
-                                    await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
-                                    setScoreLog(prev => [{ teamName: team.name, delta, reason: scoreReason[team.id] || '', ts: new Date() }, ...prev.slice(0, 19)])
-                                    setScoreReason(prev => ({ ...prev, [team.id]: '', [team.id + '_pts']: '' }))
-                                    fetchTeams()
+                                    if (!supabase || submitting.has(team.id)) return
+                                    setSubmitting(prev => new Set(prev).add(team.id))
+                                    try {
+                                        const newScore = Math.max(0, score + delta)
+                                        const reason = scoreReason[team.id] || ''
+                                        await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
+                                        await supabase.from('score_logs').insert({ team_id: team.id, team_name: team.name, delta, reason })
+                                        setScoreReason(prev => ({ ...prev, [team.id]: '', [team.id + '_pts']: '' }))
+                                        fetchTeams()
+                                        fetchScoreLogs()
+                                        const isMerit = delta > 0
+                                        Swal.fire({
+                                            toast: true,
+                                            position: 'top-end',
+                                            icon: isMerit ? 'success' : 'error',
+                                            title: `${isMerit ? 'Merit' : 'Demerit'} applied!`,
+                                            html: `<strong>${team.name}</strong> &nbsp;<span style="color:${isMerit ? '#16a34a' : '#dc2626'};font-weight:700">${isMerit ? '+' : ''}${delta} pts</span>${reason ? `<br><span style="font-size:0.8em;color:#64748b">${reason}</span>` : ''}`,
+                                            showConfirmButton: false,
+                                            timer: 3000,
+                                            timerProgressBar: true,
+                                        })
+                                    } finally {
+                                        setSubmitting(prev => { const s = new Set(prev); s.delete(team.id); return s })
+                                    }
                                 }
+                                const isBusy = submitting.has(team.id)
                                 return (
                                     <div key={team.id} className="card" style={{ padding: '1.25rem' }}>
                                         {/* Header row */}
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                                                <span style={{ fontSize: '1.25rem' }}>{rank}</span>
+                                                <div style={{ width: '2rem', height: '2rem', borderRadius: '0.5rem', background: rankBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: idx < 3 ? '0.875rem' : '0.75rem', color: rankTextColor, flexShrink: 0 }}>{rankLabel}</div>
                                                 <span style={{ fontWeight: 700, fontSize: '1rem', color: '#0f172a' }}>{team.name}</span>
                                             </div>
                                             <span style={{ fontSize: '1.625rem', fontWeight: 900, color: '#6366f1', lineHeight: 1 }}>{score} <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500 }}>pts</span></span>
@@ -714,16 +759,18 @@ export default function AdminScanner({ onLogout }) {
                                                 style={{ flex: '0 0 64px', fontSize: '0.9375rem', fontWeight: 700, padding: '0.5rem 0.5rem', textAlign: 'center', width: '64px' }}
                                             />
                                             {/* + Merit */}
-                                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                            <motion.button whileHover={{ scale: isBusy ? 1 : 1.05 }} whileTap={{ scale: isBusy ? 1 : 0.95 }}
                                                 onClick={() => applyScore(+pts)}
-                                                style={{ flex: '1 1 80px', padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#dcfce7', border: '1.5px solid #86efac', color: '#16a34a', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                                                <span style={{ fontSize: '1.1rem' }}>＋</span> Merit
+                                                disabled={isBusy}
+                                                style={{ flex: '1 1 80px', padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#dcfce7', border: '1.5px solid #86efac', color: '#16a34a', fontWeight: 800, fontSize: '1rem', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', opacity: isBusy ? 0.5 : 1 }}>
+                                                <span style={{ fontSize: '1.1rem' }}>＋</span> {isBusy ? '…' : 'Merit'}
                                             </motion.button>
                                             {/* − Demerit */}
-                                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                            <motion.button whileHover={{ scale: isBusy ? 1 : 1.05 }} whileTap={{ scale: isBusy ? 1 : 0.95 }}
                                                 onClick={() => applyScore(-pts)}
-                                                style={{ flex: '1 1 80px', padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#fee2e2', border: '1.5px solid #fca5a5', color: '#dc2626', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                                                <span style={{ fontSize: '1.1rem' }}>－</span> Demerit
+                                                disabled={isBusy}
+                                                style={{ flex: '1 1 80px', padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#fee2e2', border: '1.5px solid #fca5a5', color: '#dc2626', fontWeight: 800, fontSize: '1rem', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', opacity: isBusy ? 0.5 : 1 }}>
+                                                <span style={{ fontSize: '1.1rem' }}>－</span> {isBusy ? '…' : 'Demerit'}
                                             </motion.button>
                                         </div>
                                     </div>
@@ -733,16 +780,23 @@ export default function AdminScanner({ onLogout }) {
                             {/* Recent action log */}
                             {scoreLog.length > 0 && (
                                 <div className="card" style={{ padding: '1.25rem' }}>
-                                    <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.875rem', marginBottom: '0.75rem' }}>Recent Actions</p>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                        <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.875rem' }}>Recent Actions</p>
+                                        <button
+                                            onClick={async () => { await supabase.from('score_logs').delete().neq('id', 0); fetchScoreLogs() }}
+                                            style={{ fontSize: '0.6875rem', color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '0.25rem 0.5rem', borderRadius: '0.375rem' }}>
+                                            Clear log
+                                        </button>
+                                    </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                                        {scoreLog.slice(0, 10).map((entry, i) => (
-                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.5rem 0.75rem', background: '#f8fafc', borderRadius: '0.5rem', border: '1px solid #f1f5f9' }}>
-                                                <span style={{ fontSize: '0.875rem' }}>{entry.delta > 0 ? '✅' : '❌'}</span>
-                                                <span style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#1e293b', flex: 1 }}>{entry.teamName}</span>
-                                                <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: entry.delta > 0 ? '#16a34a' : '#dc2626' }}>{entry.delta > 0 ? '+10' : '−10'}</span>
+                                        {scoreLog.slice(0, 20).map((entry, i) => (
+                                            <div key={entry.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.5rem 0.75rem', background: '#f8fafc', borderRadius: '0.5rem', border: '1px solid #f1f5f9' }}>
+                                                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: entry.delta > 0 ? '#16a34a' : '#dc2626', flexShrink: 0 }} />
+                                                <span style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#1e293b', flex: 1 }}>{entry.team_name ?? entry.teamName}</span>
+                                                <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: entry.delta > 0 ? '#16a34a' : '#dc2626' }}>{entry.delta > 0 ? `+${entry.delta}` : `${entry.delta}`}</span>
                                                 {entry.reason && <span style={{ fontSize: '0.75rem', color: '#64748b', maxWidth: '8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.reason}</span>}
                                                 <span style={{ fontSize: '0.6875rem', color: '#cbd5e1', flexShrink: 0 }}>
-                                                    {entry.ts.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })}
+                                                    {new Date(entry.created_at ?? entry.ts).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })}
                                                 </span>
                                             </div>
                                         ))}
