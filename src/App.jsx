@@ -1,95 +1,81 @@
-import { useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
-import Registration from './components/Registration'
+import { useState, useEffect } from 'react'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import Login from './components/Login'
+import Register from './components/Register'
 import Dashboard from './components/Dashboard'
+import LogbookPage from './components/LogbookPage'
 import AdminLogin from './components/AdminLogin'
 import AdminScanner from './components/AdminScanner'
 
-function StudentView() {
-    const [uuid, setUuid] = useState(() => localStorage.getItem('student_uuid') || null)
+// ─── Student Auth Guard ───────────────────────────────────────────────────────
+function StudentRoot() {
+    const [uuid, setUuid] = useState(() => localStorage.getItem('student_uuid'))
+    const [showRegister, setShowRegister] = useState(false)
 
-    const handleRegistered = (newUuid) => {
-        setUuid(newUuid)
-    }
-
-    return (
-        <AnimatePresence mode="wait">
-            {uuid ? (
-                <motion.div
-                    key="dashboard"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                >
-                    <Dashboard uuid={uuid} />
-                </motion.div>
-            ) : (
-                <motion.div
-                    key="registration"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                >
-                    <Registration onRegistered={handleRegistered} />
-                </motion.div>
-            )}
-        </AnimatePresence>
-    )
-}
-
-function AdminView() {
-    const [admin, setAdmin] = useState(() => {
-        try {
-            const stored = localStorage.getItem('admin_session')
-            return stored ? JSON.parse(stored) : null
-        } catch {
-            return null
+    if (!uuid) {
+        if (showRegister) {
+            return (
+                <Register
+                    onRegistered={(newUuid, action) => {
+                        if (action === 'login') { setShowRegister(false); return }
+                        setUuid(newUuid)
+                    }}
+                />
+            )
         }
-    })
-
-    const handleLogin = (adminData) => {
-        setAdmin(adminData)
+        return (
+            <Login
+                onLogin={(newUuid) => setUuid(newUuid)}
+                onGoRegister={() => setShowRegister(true)}
+            />
+        )
     }
 
-    const handleLogout = () => {
-        setAdmin(null)
+    return <Dashboard uuid={uuid} />
+}
+
+// ─── Admin Auth Guard ─────────────────────────────────────────────────────────
+function AdminRoot() {
+    const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(
+        () => sessionStorage.getItem('admin_logged_in') === 'true'
+    )
+
+    if (!isAdminLoggedIn) {
+        return (
+            <AdminLogin
+                onLogin={() => {
+                    sessionStorage.setItem('admin_logged_in', 'true')
+                    setIsAdminLoggedIn(true)
+                }}
+            />
+        )
     }
 
     return (
-        <AnimatePresence mode="wait">
-            {admin ? (
-                <motion.div
-                    key="admin-dashboard"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                >
-                    <AdminScanner onLogout={handleLogout} />
-                </motion.div>
-            ) : (
-                <motion.div
-                    key="admin-login"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                >
-                    <AdminLogin onLogin={handleLogin} />
-                </motion.div>
-            )}
-        </AnimatePresence>
+        <AdminScanner
+            onLogout={() => {
+                sessionStorage.removeItem('admin_logged_in')
+                setIsAdminLoggedIn(false)
+            }}
+        />
     )
 }
 
+// ─── Logbook Page Guard ───────────────────────────────────────────────────────
+function LogbookRoute() {
+    const uuid = localStorage.getItem('student_uuid')
+    if (!uuid) return <Navigate to="/" replace />
+    return <LogbookPage uuid={uuid} />
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
     return (
         <Routes>
-            <Route path="/" element={<StudentView />} />
-            <Route path="/admin" element={<AdminView />} />
+            <Route path="/" element={<StudentRoot />} />
+            <Route path="/logbook" element={<LogbookRoute />} />
+            <Route path="/admin" element={<AdminRoot />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     )
 }

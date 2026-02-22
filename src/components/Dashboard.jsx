@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import QRCode from 'react-qr-code'
 import { supabase } from '../lib/supabase'
 
 export default function Dashboard({ uuid }) {
+    const navigate = useNavigate()
     const [student, setStudent] = useState(null)
     const [loading, setLoading] = useState(true)
     const [editing, setEditing] = useState(false)
@@ -13,10 +15,6 @@ export default function Dashboard({ uuid }) {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [successMsg, setSuccessMsg] = useState('')
-
-    // Attendance history
-    const [attendance, setAttendance] = useState([])
-    const [attLoading, setAttLoading] = useState(false)
 
     const fetchStudent = async () => {
         try {
@@ -29,9 +27,7 @@ export default function Dashboard({ uuid }) {
             setEditTeam(data.team_name)
         } catch (err) {
             setError('Could not load your profile.')
-        } finally {
-            setLoading(false)
-        }
+        } finally { setLoading(false) }
     }
 
     const fetchTeams = async () => {
@@ -40,26 +36,7 @@ export default function Dashboard({ uuid }) {
         setTeams(data || [])
     }
 
-    const fetchAttendance = async () => {
-        if (!supabase || !student?.id) return
-        setAttLoading(true)
-        try {
-            const { data } = await supabase
-                .from('logbook')
-                .select('id, time_in, time_out')
-                .eq('student_id', student.id)
-                .order('time_in', { ascending: false })
-                .limit(20)
-            setAttendance(data || [])
-        } catch (err) {
-            console.error('Failed to load attendance:', err)
-        } finally {
-            setAttLoading(false)
-        }
-    }
-
     useEffect(() => { fetchStudent(); fetchTeams() }, [uuid])
-    useEffect(() => { if (student?.id) fetchAttendance() }, [student?.id])
 
     const handleSaveEdit = async () => {
         if (!editName.trim() || !editTeam) return
@@ -80,20 +57,10 @@ export default function Dashboard({ uuid }) {
         } finally { setSaving(false) }
     }
 
-    const fmtTime = (iso) => {
-        if (!iso) return '—'
-        return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
-    }
-    const fmtDate = (iso) => {
-        if (!iso) return ''
-        return new Date(iso).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
-    }
-    const duration = (inT, outT) => {
-        if (!outT) return null
-        const ms = new Date(outT) - new Date(inT)
-        const h = Math.floor(ms / 3600000)
-        const m = Math.floor((ms % 3600000) / 60000)
-        return h > 0 ? `${h}h ${m}m` : `${m}m`
+    const handleLogout = () => {
+        localStorage.removeItem('student_uuid')
+        navigate('/')
+        window.location.reload()
     }
 
     if (loading) {
@@ -114,11 +81,17 @@ export default function Dashboard({ uuid }) {
 
             <div style={{ maxWidth: '26rem', margin: '0 auto', position: 'relative', zIndex: 10 }}>
 
-                {/* Header */}
+                {/* Header with logout */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-                    style={{ textAlign: 'center', marginBottom: '1.5rem', paddingTop: '1rem' }}>
-                    <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em', marginBottom: '0.25rem' }}>Your Event Pass</h1>
-                    <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Show this QR code at the entrance</p>
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingTop: '1rem' }}>
+                    <div style={{ textAlign: 'center', flex: 1 }}>
+                        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em', marginBottom: '0.25rem' }}>Your Event Pass</h1>
+                        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Show this QR code at the entrance</p>
+                    </div>
+                    <button onClick={handleLogout}
+                        style={{ flexShrink: 0, padding: '0.5rem 0.875rem', borderRadius: '0.625rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginLeft: '0.75rem' }}>
+                        Log out
+                    </button>
                 </motion.div>
 
                 {/* QR Card */}
@@ -149,18 +122,21 @@ export default function Dashboard({ uuid }) {
                                 style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>Full Name</label>
-                                    <input className="input" type="text" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ fontSize: '0.9rem' }} />
+                                    <input className="input" type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>Team</label>
-                                    <select className="input" value={editTeam} onChange={(e) => setEditTeam(e.target.value)} style={{ appearance: 'none', fontSize: '0.9rem', cursor: 'pointer', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cpath fill='%2394a3b8' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center' }}>
+                                    <select className="input" value={editTeam} onChange={(e) => setEditTeam(e.target.value)}
+                                        style={{ appearance: 'none', cursor: 'pointer', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cpath fill='%2394a3b8' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center' }}>
                                         {teams.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
                                     </select>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.625rem' }}>
                                     <button className="btn-secondary" type="button" onClick={() => { setEditing(false); setEditName(student.full_name); setEditTeam(student.team_name) }} style={{ flex: 1, padding: '0.75rem' }}>Cancel</button>
                                     <button className="btn-primary" type="button" onClick={handleSaveEdit} disabled={saving} style={{ flex: 1.5, padding: '0.75rem' }}>
-                                        {saving ? <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" opacity="0.3" /><path fill="white" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : 'Save'}
+                                        {saving
+                                            ? <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" opacity="0.3" /><path fill="white" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                            : 'Save'}
                                     </button>
                                 </div>
                             </motion.div>
@@ -173,75 +149,25 @@ export default function Dashboard({ uuid }) {
                     </AnimatePresence>
                 </motion.div>
 
-                {/* ── ATTENDANCE HISTORY ─────────────────────────────── */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
-                        <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>My Attendance</h2>
-                        <button onClick={fetchAttendance} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'none', border: 'none', color: '#6366f1', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                            Refresh
-                        </button>
-                    </div>
+                {/* View Logbook button */}
+                <motion.button
+                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45, duration: 0.5 }}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate('/logbook')}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.625rem', padding: '1rem', borderRadius: '1rem', background: 'white', border: '2px solid #e2e8f0', color: '#374151', fontWeight: 700, fontSize: '0.9375rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s', marginBottom: '1rem' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = '#6366f1'; e.currentTarget.style.background = '#f5f3ff' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#374151'; e.currentTarget.style.background = 'white' }}
+                >
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                    View My Attendance Logbook
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} style={{ marginLeft: 'auto' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                </motion.button>
 
-                    <div className="card" style={{ overflow: 'hidden', marginBottom: '1.5rem' }}>
-                        {attLoading ? (
-                            <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem' }}>Loading…</div>
-                        ) : attendance.length === 0 ? (
-                            <div style={{ padding: '2.5rem', textAlign: 'center' }}>
-                                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📭</div>
-                                <p style={{ fontWeight: 600, color: '#374151', marginBottom: '0.25rem', fontSize: '0.9375rem' }}>No records yet</p>
-                                <p style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>Your attendance will appear here after scanning</p>
-                            </div>
-                        ) : (
-                            <div>
-                                {/* Summary strip */}
-                                <div style={{ display: 'flex', borderBottom: '1px solid #f1f5f9' }}>
-                                    {[
-                                        { label: 'Total Visits', value: attendance.length },
-                                        { label: 'Present', value: attendance.filter(r => !r.time_out).length },
-                                        { label: 'Completed', value: attendance.filter(r => r.time_out).length },
-                                    ].map((s, i) => (
-                                        <div key={s.label} style={{ flex: 1, padding: '0.875rem', textAlign: 'center', borderRight: i < 2 ? '1px solid #f1f5f9' : 'none' }}>
-                                            <p style={{ fontSize: '1.375rem', fontWeight: 800, color: '#0f172a' }}>{s.value}</p>
-                                            <p style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</p>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Rows */}
-                                <div>
-                                    {attendance.map((row, i) => (
-                                        <div key={row.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1.125rem', borderBottom: i < attendance.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                            <div>
-                                                <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b', marginBottom: '0.2rem' }}>{fmtDate(row.time_in)}</p>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: '#64748b' }}>
-                                                    <span>In: {fmtTime(row.time_in)}</span>
-                                                    {row.time_out && (
-                                                        <>
-                                                            <span style={{ color: '#e2e8f0' }}>•</span>
-                                                            <span>Out: {fmtTime(row.time_out)}</span>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
-                                                <span className={`badge ${row.time_out ? '' : 'badge-success'}`}
-                                                    style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: row.time_out ? '#f1f5f9' : '', color: row.time_out ? '#64748b' : '' }}>
-                                                    {row.time_out ? 'Done' : '● Present'}
-                                                </span>
-                                                {duration(row.time_in, row.time_out) && (
-                                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{duration(row.time_in, row.time_out)}</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </motion.div>
-
-                <p style={{ textAlign: 'center', color: '#e2e8f0', fontSize: '0.625rem', fontFamily: 'monospace', wordBreak: 'break-all', userSelect: 'all', paddingBottom: '1rem' }}>
+                <p style={{ textAlign: 'center', color: '#e2e8f0', fontSize: '0.625rem', fontFamily: 'monospace', wordBreak: 'break-all', userSelect: 'all', paddingBottom: '1.5rem' }}>
                     {uuid}
                 </p>
             </div>

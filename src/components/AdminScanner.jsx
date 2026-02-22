@@ -71,8 +71,17 @@ export default function AdminScanner({ onLogout }) {
         if (!supabase) return
         setTeamsLoading(true)
         try {
-            const { data } = await supabase.from('teams').select('*').order('name')
-            setTeams(data || [])
+            // Fetch teams and student counts in parallel
+            const [{ data: teamsData }, { data: studentsData }] = await Promise.all([
+                supabase.from('teams').select('*').order('name'),
+                supabase.from('students').select('id, team_name'),
+            ])
+            // Annotate each team with member count
+            const withCounts = (teamsData || []).map((t) => ({
+                ...t,
+                member_count: (studentsData || []).filter((s) => s.team_name === t.name).length,
+            }))
+            setTeams(withCounts)
         } finally { setTeamsLoading(false) }
     }, [])
 
@@ -445,6 +454,9 @@ export default function AdminScanner({ onLogout }) {
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                                                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#06b6d4)', flexShrink: 0 }} />
                                                     <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9375rem' }}>{team.name}</span>
+                                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', background: '#f1f5f9', borderRadius: '99px', padding: '0.125rem 0.5rem', fontWeight: 500 }}>
+                                                        {team.member_count} {team.member_count === 1 ? 'member' : 'members'}
+                                                    </span>
                                                 </div>
                                                 <button onClick={() => deleteTeam(team.id)}
                                                     onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#dc2626' }}

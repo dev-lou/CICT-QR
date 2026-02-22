@@ -1,5 +1,5 @@
 -- ============================================
--- ISUFST QR Attendance System — Full Schema
+-- ISUFST QR Attendance System — Full Schema v2
 -- Run this in Supabase SQL Editor.
 -- Safe to re-run: uses IF NOT EXISTS / IF EXISTS.
 -- ============================================
@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS admins (
   password TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 INSERT INTO admins (email, password)
 VALUES ('admin@isufst.edu', 'admin123')
 ON CONFLICT (email) DO NOTHING;
@@ -28,16 +27,16 @@ CREATE TABLE IF NOT EXISTS students (
   id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   uuid       UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
   full_name  TEXT NOT NULL,
+  username   TEXT UNIQUE NOT NULL DEFAULT '',
+  password   TEXT NOT NULL DEFAULT '',
   team_name  TEXT NOT NULL DEFAULT '',
   edit_count INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ↓ Migration: if you ran the old schema that used "group_name",
---   this renames it to "team_name" and drops the old column.
+-- Migration: rename group_name → team_name if old schema was used
 DO $$
 BEGIN
-  -- Add team_name if it doesn't exist yet
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'students' AND column_name = 'team_name'
@@ -45,13 +44,30 @@ BEGIN
     ALTER TABLE students ADD COLUMN team_name TEXT NOT NULL DEFAULT '';
   END IF;
 
-  -- Copy data from group_name → team_name if group_name still exists
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'students' AND column_name = 'group_name'
   ) THEN
     UPDATE students SET team_name = group_name WHERE team_name = '';
     ALTER TABLE students DROP COLUMN group_name;
+  END IF;
+
+  -- Add username column if missing (migration from older version)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'students' AND column_name = 'username'
+  ) THEN
+    ALTER TABLE students ADD COLUMN username TEXT NOT NULL DEFAULT '';
+    -- Make it unique after adding (existing rows will have empty string - fix manually)
+    CREATE UNIQUE INDEX IF NOT EXISTS students_username_unique ON students (username) WHERE username != '';
+  END IF;
+
+  -- Add password column if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'students' AND column_name = 'password'
+  ) THEN
+    ALTER TABLE students ADD COLUMN password TEXT NOT NULL DEFAULT '';
   END IF;
 END $$;
 
@@ -64,6 +80,5 @@ CREATE TABLE IF NOT EXISTS logbook (
 );
 
 -- ============================================
--- DONE! Tables: admins, teams, students, logbook
--- Default admin login: admin@isufst.edu / admin123
+-- DONE! Default admin: admin@isufst.edu / admin123
 -- ============================================
