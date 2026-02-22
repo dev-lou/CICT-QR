@@ -174,6 +174,7 @@ export default function Scoreboard() {
         setRevealState('idle'); setShowConfetti(false); setWinnerScore(0)
         // Reveal everything when dismissing winner screen
         setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false); setHideAll(false)
+        setShowControls(false)
     }
 
     const resetToggles = async () => {
