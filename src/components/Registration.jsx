@@ -210,7 +210,7 @@ export default function Registration({ onRegistered }) {
                 </motion.form>
 
                 <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem', marginTop: '1.5rem' }}>
-                    IT Week Event Attendance System
+                    IT Week Event Attendance System · Built by Lou Vincent Baroro
                 </p>
             </motion.div>
         </div>

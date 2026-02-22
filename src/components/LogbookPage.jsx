@@ -235,7 +235,7 @@ export default function LogbookPage({ uuid }) {
                 <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: '#cbd5e1', marginTop: '1rem' }}>
                     {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'} shown
                 </p>
-                <p style={{ textAlign: 'center', fontSize: '0.625rem', color: '#e2e8f0', marginTop: '0.5rem', paddingBottom: '1rem' }}>
+                <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: '#94a3b8', marginTop: '0.5rem', paddingBottom: '1rem' }}>
                     Built by Lou Vincent Baroro
                 </p>
             </div>

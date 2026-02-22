@@ -83,15 +83,11 @@ export default function Dashboard({ uuid }) {
 
                 {/* Header with logout */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingTop: '1rem' }}>
-                    <div style={{ textAlign: 'center', flex: 1 }}>
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem', paddingTop: '1rem' }}>
+                    <div style={{ textAlign: 'center' }}>
                         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em', marginBottom: '0.25rem' }}>Your Event Pass</h1>
                         <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Show this QR code at the entrance</p>
                     </div>
-                    <button onClick={handleLogout}
-                        style={{ flexShrink: 0, padding: '0.5rem 0.875rem', borderRadius: '0.625rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginLeft: '0.75rem' }}>
-                        Log out
-                    </button>
                 </motion.div>
 
                 {/* QR Card */}
@@ -167,9 +163,6 @@ export default function Dashboard({ uuid }) {
                     </svg>
                 </motion.button>
 
-                <p style={{ textAlign: 'center', color: '#e2e8f0', fontSize: '0.625rem', fontFamily: 'monospace', wordBreak: 'break-all', userSelect: 'all', paddingBottom: '1.5rem' }}>
-                    {uuid}
-                </p>
             </div>
         </div>
     )
