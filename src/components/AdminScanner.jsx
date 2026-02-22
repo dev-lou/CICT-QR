@@ -561,7 +561,7 @@ export default function AdminScanner({ onLogout }) {
                                 </div>
                             </div>
 
-                            {/* Logbook entries — mobile-friendly cards */}
+                            {/* Logbook entries — table */}
                             <div className="card" style={{ overflow: 'hidden' }}>
                                 {logLoading ? (
                                     <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
@@ -576,36 +576,58 @@ export default function AdminScanner({ onLogout }) {
                                         <p style={{ fontSize: '0.8125rem' }}>Scan QR codes to populate the logbook</p>
                                     </div>
                                 ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                        {filteredLog.map((row, i) => (
-                                            <motion.div key={row.id}
-                                                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-                                                style={{
-                                                    padding: '0.875rem 1.25rem',
-                                                    borderBottom: i < filteredLog.length - 1 ? '1px solid #f1f5f9' : 'none',
-                                                    background: i % 2 === 0 ? 'white' : '#fdfdfe',
-                                                }}
-                                            >
-                                                {/* Row top: name + status badge */}
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem', gap: '0.5rem' }}>
-                                                    <p style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9375rem', lineHeight: 1.2 }}>{row.students?.full_name}</p>
-                                                    <span style={{
-                                                        fontSize: '0.6875rem', padding: '0.2rem 0.625rem', borderRadius: '99px', fontWeight: 600, flexShrink: 0,
-                                                        background: row.time_out ? '#f1f5f9' : '#dcfce7',
-                                                        color: row.time_out ? '#64748b' : '#16a34a',
-                                                    }}>
-                                                        {row.time_out ? 'Checked Out' : '● Present'}
-                                                    </span>
-                                                </div>
-                                                {/* Row bottom: team + date + times */}
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
-                                                    <span className="badge badge-brand" style={{ fontSize: '0.6875rem', padding: '0.15rem 0.5rem' }}>{row.students?.team_name}</span>
-                                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{fmtDate(row.time_in)}</span>
-                                                    <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>In: {fmtTime(row.time_in)}</span>
-                                                    {row.time_out && <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>Out: {fmtTime(row.time_out)}</span>}
-                                                </div>
-                                            </motion.div>
-                                        ))}
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                                            <thead>
+                                                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                                    {['#', 'Name', 'Team', 'Date', 'Time In', 'Time Out', 'Status'].map((h, hi) => (
+                                                        <th key={h} style={{
+                                                            padding: '0.625rem 0.875rem',
+                                                            fontSize: '0.6875rem', fontWeight: 700, color: '#64748b',
+                                                            textTransform: 'uppercase', letterSpacing: '0.06em',
+                                                            whiteSpace: 'nowrap', textAlign: hi === 0 || hi === 6 ? 'center' : 'left',
+                                                        }}>{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredLog.map((row, i) => {
+                                                    const tdBase = {
+                                                        padding: '0.75rem 0.875rem',
+                                                        borderBottom: i < filteredLog.length - 1 ? '1px solid #f1f5f9' : 'none',
+                                                        background: i % 2 === 0 ? 'white' : '#fafafa',
+                                                        verticalAlign: 'middle',
+                                                    }
+                                                    return (
+                                                        <motion.tr key={row.id}
+                                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                                                            transition={{ delay: Math.min(i * 0.015, 0.3) }}>
+                                                            <td style={{ ...tdBase, textAlign: 'center', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{i + 1}</td>
+                                                            <td style={{ ...tdBase, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>{row.students?.full_name}</td>
+                                                            <td style={tdBase}>
+                                                                <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap' }}>
+                                                                    {row.students?.team_name}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ ...tdBase, color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{fmtDate(row.time_in)}</td>
+                                                            <td style={{ ...tdBase, color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_in)}</td>
+                                                            <td style={{ ...tdBase, color: row.time_out ? '#0f172a' : '#cbd5e1', fontWeight: row.time_out ? 600 : 400, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_out)}</td>
+                                                            <td style={{ ...tdBase, textAlign: 'center' }}>
+                                                                <span style={{
+                                                                    display: 'inline-block', padding: '0.2rem 0.625rem', borderRadius: '99px',
+                                                                    fontSize: '0.6875rem', fontWeight: 700, whiteSpace: 'nowrap',
+                                                                    background: row.time_out ? '#f1f5f9' : '#dcfce7',
+                                                                    color: row.time_out ? '#64748b' : '#16a34a',
+                                                                    border: `1px solid ${row.time_out ? '#e2e8f0' : '#86efac'}`,
+                                                                }}>
+                                                                    {row.time_out ? 'Done' : '● Present'}
+                                                                </span>
+                                                            </td>
+                                                        </motion.tr>
+                                                    )
+                                                })}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 )}
                             </div>
