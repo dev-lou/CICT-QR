@@ -440,12 +440,13 @@ export default function AdminScanner({ onLogout }) {
                                         style={{ padding: '0.5rem 1.125rem', borderRadius: '0.625rem', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: scanning ? '#fef2f2' : 'linear-gradient(135deg,#6366f1,#06b6d4)', color: scanning ? '#dc2626' : 'white' }}
                                     >{scanning ? 'Stop' : 'Start Scanner'}</button>
                                 </div>
-                                <div style={{ background: '#0f172a', position: 'relative', minHeight: '260px', maxHeight: '380px', overflow: 'hidden' }}>
+                                <div style={{ background: '#0f172a', position: 'relative', minHeight: '260px' }}>
                                     <div id="qr-reader" style={{ width: '100%' }} />
                                     {!scanning && (
                                         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
                                             <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="#475569" strokeWidth={1} opacity={0.5}>
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                                <circle cx="12" cy="13" r="3" />
                                             </svg>
                                             <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Click "Start Scanner" to begin</p>
                                         </div>

@@ -452,3 +452,15 @@ button {
   background: #0f172a;
   border-bottom: 1px solid #1e293b;
 }
+
+/* QR scanner video – cap height, no clipping */
+#qr-reader video {
+  width: 100% !important;
+  max-height: 380px !important;
+  object-fit: cover !important;
+  display: block;
+}
+
+#qr-reader {
+  border: none !important;
+}
