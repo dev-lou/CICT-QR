@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../lib/supabase'
+import Swal from 'sweetalert2'
 
 const BASE_SCORE = 150
 
@@ -149,6 +150,9 @@ export default function Scoreboard() {
     }, [])
 
     const startReveal = () => {
+        // Immediately reveal all data so audience sees scores during countdown
+        setHideAll(false); setHideNames(false); setHideScores(false)
+        setHideBars(false); setHideTop2(false)
         setRevealState('countdown'); setCountdown(10)
         let c = 10
         const t = setInterval(() => {
@@ -173,7 +177,22 @@ export default function Scoreboard() {
         setHideNames(true); setHideScores(true); setHideTop2(true); setHideBars(true); setHideAll(true)
     }
 
-    const resetToggles = () => { setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false); setHideAll(false) }
+    const resetToggles = async () => {
+        const result = await Swal.fire({
+            title: 'Reset Toggles?',
+            text: 'This will hide names, scores, bars and top 2. Hide Everything stays off.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#334155',
+            confirmButtonText: 'Yes, reset',
+            cancelButtonText: 'Cancel',
+            background: '#0f172a',
+            color: '#e2e8f0',
+        })
+        if (!result.isConfirmed) return
+        setHideNames(true); setHideScores(true); setHideTop2(true); setHideBars(true); setHideAll(false)
+    }
 
     const sorted = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     const maxScore = Math.max(BASE_SCORE, ...teams.map(t => t.score ?? 0))
@@ -277,7 +296,7 @@ export default function Scoreboard() {
                             style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem',
                                 width: '100%', padding: '0.45rem', borderRadius: '0.5rem',
-                                border: '1px solid rgba(255,255,255,0.05)', background: 'transparent',
+                                border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.07)',
                                 cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.75rem', fontWeight: 600, color: '#334155',
                             }}>
                             <Icon.RotateCcw /> Reset Toggles
