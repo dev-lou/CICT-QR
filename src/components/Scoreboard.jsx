@@ -150,9 +150,6 @@ export default function Scoreboard() {
     }, [])
 
     const startReveal = () => {
-        // Immediately reveal all data so audience sees scores during countdown
-        setHideAll(false); setHideNames(false); setHideScores(false)
-        setHideBars(false); setHideTop2(false)
         setRevealState('countdown'); setCountdown(10)
         let c = 10
         const t = setInterval(() => {
@@ -172,9 +169,11 @@ export default function Scoreboard() {
         }, 1000)
     }
 
+    // Called when winner screen is tapped — reveal full scoreboard
     const resetAll = () => {
         setRevealState('idle'); setShowConfetti(false); setWinnerScore(0)
-        setHideNames(true); setHideScores(true); setHideTop2(true); setHideBars(true); setHideAll(true)
+        // Reveal everything when dismissing winner screen
+        setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false); setHideAll(false)
     }
 
     const resetToggles = async () => {
