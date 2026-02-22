@@ -654,7 +654,7 @@ export default function AdminScanner({ onLogout }) {
                             {/* Info card */}
                             <div className="card" style={{ padding: '1rem 1.25rem', background: '#eef2ff', border: '1.5px solid #c7d2fe' }}>
                                 <p style={{ fontSize: '0.8125rem', color: '#4f46e5', fontWeight: 600 }}>
-                                    🏆 Teams start at <strong>150 pts</strong>. Merit <strong>+10</strong> · Demerit <strong>−10</strong> (min 0).
+                                    🏆 Teams start at <strong>150 pts</strong>. Type any points in the field, then click <strong>＋ Merit</strong> to add or <strong>－ Demerit</strong> to subtract (min 0).
                                 </p>
                                 <motion.button
                                     whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
@@ -672,6 +672,15 @@ export default function AdminScanner({ onLogout }) {
                                 const score = team.score ?? 150
                                 const pct = Math.min((score / 150) * 100, 100)
                                 const rank = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`
+                                const pts = parseInt(scoreReason[team.id + '_pts'] || '10', 10) || 10
+                                const applyScore = async (delta) => {
+                                    if (!supabase) return
+                                    const newScore = Math.max(0, score + delta)
+                                    await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
+                                    setScoreLog(prev => [{ teamName: team.name, delta, reason: scoreReason[team.id] || '', ts: new Date() }, ...prev.slice(0, 19)])
+                                    setScoreReason(prev => ({ ...prev, [team.id]: '', [team.id + '_pts']: '' }))
+                                    fetchTeams()
+                                }
                                 return (
                                     <div key={team.id} className="card" style={{ padding: '1.25rem' }}>
                                         {/* Header row */}
@@ -683,42 +692,38 @@ export default function AdminScanner({ onLogout }) {
                                             <span style={{ fontSize: '1.625rem', fontWeight: 900, color: '#6366f1', lineHeight: 1 }}>{score} <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500 }}>pts</span></span>
                                         </div>
                                         {/* Progress bar */}
-                                        <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden', marginBottom: '0.875rem' }}>
+                                        <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden', marginBottom: '1rem' }}>
                                             <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#6366f1,#06b6d4)', borderRadius: '99px', transition: 'width 0.5s ease' }} />
                                         </div>
-                                        {/* Reason input */}
-                                        <input
-                                            className="input" type="text"
-                                            value={scoreReason[team.id] || ''}
-                                            onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id]: e.target.value }))}
-                                            placeholder="Reason (optional) e.g. Won quiz, Late..."
-                                            style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', padding: '0.5rem 0.75rem' }}
-                                        />
-                                        {/* Merit / Demerit buttons */}
-                                        <div style={{ display: 'flex', gap: '0.625rem' }}>
-                                            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                                                onClick={async () => {
-                                                    if (!supabase) return
-                                                    const newScore = Math.max(0, score + 10)
-                                                    await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
-                                                    setScoreLog(prev => [{ teamName: team.name, delta: +10, reason: scoreReason[team.id] || '', ts: new Date() }, ...prev.slice(0, 19)])
-                                                    setScoreReason(prev => ({ ...prev, [team.id]: '' }))
-                                                    fetchTeams()
-                                                }}
-                                                style={{ flex: 1, padding: '0.625rem', borderRadius: '0.625rem', background: '#dcfce7', border: '1.5px solid #86efac', color: '#16a34a', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-                                                ✅ +10 Merit
+                                        {/* Controls row: reason + points + buttons */}
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                            {/* Reason */}
+                                            <input
+                                                className="input" type="text"
+                                                value={scoreReason[team.id] || ''}
+                                                onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id]: e.target.value }))}
+                                                placeholder="Reason (e.g. Won quiz)"
+                                                style={{ flex: '2 1 120px', fontSize: '0.8125rem', padding: '0.5rem 0.75rem', minWidth: '100px' }}
+                                            />
+                                            {/* Points amount */}
+                                            <input
+                                                className="input" type="number" min="1"
+                                                value={scoreReason[team.id + '_pts'] || ''}
+                                                onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id + '_pts']: e.target.value }))}
+                                                placeholder="Pts"
+                                                style={{ flex: '0 0 64px', fontSize: '0.9375rem', fontWeight: 700, padding: '0.5rem 0.5rem', textAlign: 'center', width: '64px' }}
+                                            />
+                                            {/* + Merit */}
+                                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                                onClick={() => applyScore(+pts)}
+                                                style={{ flex: '1 1 80px', padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#dcfce7', border: '1.5px solid #86efac', color: '#16a34a', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                                                <span style={{ fontSize: '1.1rem' }}>＋</span> Merit
                                             </motion.button>
-                                            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                                                onClick={async () => {
-                                                    if (!supabase) return
-                                                    const newScore = Math.max(0, score - 10)
-                                                    await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
-                                                    setScoreLog(prev => [{ teamName: team.name, delta: -10, reason: scoreReason[team.id] || '', ts: new Date() }, ...prev.slice(0, 19)])
-                                                    setScoreReason(prev => ({ ...prev, [team.id]: '' }))
-                                                    fetchTeams()
-                                                }}
-                                                style={{ flex: 1, padding: '0.625rem', borderRadius: '0.625rem', background: '#fee2e2', border: '1.5px solid #fca5a5', color: '#dc2626', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-                                                ❌ −10 Demerit
+                                            {/* − Demerit */}
+                                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                                onClick={() => applyScore(-pts)}
+                                                style={{ flex: '1 1 80px', padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#fee2e2', border: '1.5px solid #fca5a5', color: '#dc2626', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                                                <span style={{ fontSize: '1.1rem' }}>－</span> Demerit
                                             </motion.button>
                                         </div>
                                     </div>

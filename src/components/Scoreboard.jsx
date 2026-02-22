@@ -74,7 +74,31 @@ export default function Scoreboard() {
         }
     }, [fetchTeams])
 
-    // Reveal winner flow
+    // Force body/html to allow scrolling for this page
+    useEffect(() => {
+        const html = document.documentElement
+        const body = document.body
+        const prev = {
+            htmlOverflow: html.style.overflow,
+            htmlHeight: html.style.height,
+            bodyOverflow: body.style.overflow,
+            bodyHeight: body.style.height,
+            bodyOverscroll: body.style.overscrollBehaviorY,
+        }
+        html.style.overflow = 'auto'
+        html.style.height = 'auto'
+        body.style.overflow = 'auto'
+        body.style.height = 'auto'
+        body.style.overscrollBehaviorY = 'auto'
+        return () => {
+            html.style.overflow = prev.htmlOverflow
+            html.style.height = prev.htmlHeight
+            body.style.overflow = prev.bodyOverflow
+            body.style.height = prev.bodyHeight
+            body.style.overscrollBehaviorY = prev.bodyOverscroll
+        }
+    }, [])
+
     const startReveal = () => {
         setRevealState('countdown')
         setCountdown(3)
@@ -117,12 +141,12 @@ export default function Scoreboard() {
     const maxScore = Math.max(BASE_SCORE, ...teams.map(t => t.score ?? 0))
 
     return (
-        <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg,#0f0f1a 0%,#1e1b4b 50%,#0f172a 100%)', fontFamily: 'inherit', position: 'relative', overflow: 'hidden' }}>
+        <div className="scoreboard-page" style={{ minHeight: '100vh', background: 'linear-gradient(160deg,#0f0f1a 0%,#1e1b4b 50%,#0f172a 100%)', fontFamily: 'inherit', position: 'relative' }}>
             {showConfetti && <Confetti />}
 
-            {/* Background glow orbs */}
-            <div style={{ position: 'absolute', top: '-10rem', left: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle,rgba(99,102,241,0.15) 0%,transparent 70%)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: '-10rem', right: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle,rgba(6,182,212,0.12) 0%,transparent 70%)', pointerEvents: 'none' }} />
+            {/* Background glow orbs — fixed so they don't affect scroll */}
+            <div style={{ position: 'fixed', top: '-10rem', left: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle,rgba(99,102,241,0.15) 0%,transparent 70%)', pointerEvents: 'none', zIndex: 0 }} />
+            <div style={{ position: 'fixed', bottom: '-10rem', right: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle,rgba(6,182,212,0.12) 0%,transparent 70%)', pointerEvents: 'none', zIndex: 0 }} />
 
             {/* Header */}
             <div style={{ textAlign: 'center', padding: '2.5rem 1rem 1.5rem' }}>
