@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Html5Qrcode } from 'html5-qrcode'
 import { supabase } from '../lib/supabase'
+import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 export default function AdminScanner({ onLogout }) {
     const [activeTab, setActiveTab] = useState('scanner')
@@ -18,6 +21,7 @@ export default function AdminScanner({ onLogout }) {
     const [logbook, setLogbook] = useState([])
     const [logLoading, setLogLoading] = useState(false)
     const [logFilter, setLogFilter] = useState('all') // 'all' | 'in' | 'out'
+    const [dayFilter, setDayFilter] = useState('all') // 'all' | 'YYYY-MM-DD'
 
     // Teams state
     const [teams, setTeams] = useState([])
@@ -178,20 +182,81 @@ export default function AdminScanner({ onLogout }) {
     useEffect(() => () => { if (html5QrCodeRef.current) html5QrCodeRef.current.stop().catch(() => { }) }, [])
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────
+    const TZ = 'Asia/Manila'
     const fmtTime = (iso) => {
         if (!iso) return '—'
-        return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
+        return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: TZ })
     }
     const fmtDate = (iso) => {
         if (!iso) return ''
-        return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+        return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: TZ })
     }
+    const fmtDateFull = (iso) => {
+        if (!iso) return ''
+        return new Date(iso).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: TZ })
+    }
+    // Get YYYY-MM-DD in Asia/Manila for grouping
+    const dayKey = (iso) => {
+        if (!iso) return ''
+        return new Date(iso).toLocaleDateString('en-CA', { timeZone: TZ }) // en-CA = YYYY-MM-DD format
+    }
+    // Unique event days derived from logbook data, sorted newest first
+    const eventDays = [...new Set(logbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
 
     const filteredLog = logbook.filter((r) => {
+        if (dayFilter !== 'all' && dayKey(r.time_in) !== dayFilter) return false
         if (logFilter === 'in') return !r.time_out
         if (logFilter === 'out') return !!r.time_out
         return true
     })
+
+    // ─── Export helpers ─────────────────────────────────────────────────────────
+    const exportLabel = dayFilter === 'all' ? 'All Days' : fmtDateFull(dayFilter + 'T00:00:00')
+
+    const exportExcel = () => {
+        const rows = filteredLog.map((r, i) => ({
+            '#': i + 1,
+            'Name': r.students?.full_name || '',
+            'Team': r.students?.team_name || '',
+            'Date': fmtDate(r.time_in),
+            'Time In': fmtTime(r.time_in),
+            'Time Out': fmtTime(r.time_out),
+            'Status': r.time_out ? 'Checked Out' : 'Present',
+        }))
+        const ws = XLSX.utils.json_to_sheet(rows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Attendance')
+        XLSX.writeFile(wb, `IT-Week-Attendance-${dayFilter}.xlsx`)
+    }
+
+    const exportPDF = () => {
+        const doc = new jsPDF()
+        doc.setFontSize(16)
+        doc.text('IT Week Event Attendance', 14, 18)
+        doc.setFontSize(10)
+        doc.setTextColor(100)
+        doc.text(`${exportLabel} · Exported ${new Date().toLocaleString('en-PH', { timeZone: TZ })}`, 14, 26)
+        autoTable(doc, {
+            startY: 32,
+            head: [['#', 'Name', 'Team', 'Date', 'Time In', 'Time Out', 'Status']],
+            body: filteredLog.map((r, i) => [
+                i + 1,
+                r.students?.full_name || '',
+                r.students?.team_name || '',
+                fmtDate(r.time_in),
+                fmtTime(r.time_in),
+                fmtTime(r.time_out),
+                r.time_out ? 'Checked Out' : 'Present',
+            ]),
+            styles: { fontSize: 9 },
+            headStyles: { fillColor: [99, 102, 241] },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
+        })
+        doc.setFontSize(8)
+        doc.setTextColor(180)
+        doc.text('Built by Lou Vincent Baroro', 14, doc.internal.pageSize.height - 8)
+        doc.save(`IT-Week-Attendance-${dayFilter}.pdf`)
+    }
 
     // ─── Render ───────────────────────────────────────────────────────────────────
     return (
@@ -401,39 +466,75 @@ export default function AdminScanner({ onLogout }) {
                         <motion.div key="logbook" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                             style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-                            {/* Stats row */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                            {/* Day selector tabs */}
+                            {eventDays.length > 0 && (
+                                <div className="card" style={{ padding: '1rem' }}>
+                                    <p style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>Select Day</p>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <button onClick={() => setDayFilter('all')}
+                                            style={{
+                                                padding: '0.4rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', minHeight: '36px',
+                                                borderColor: dayFilter === 'all' ? '#6366f1' : '#e2e8f0',
+                                                background: dayFilter === 'all' ? '#eef2ff' : 'white',
+                                                color: dayFilter === 'all' ? '#4f46e5' : '#64748b',
+                                            }}>📅 All Days</button>
+                                        {eventDays.map((d) => (
+                                            <button key={d} onClick={() => setDayFilter(d)}
+                                                style={{
+                                                    padding: '0.4rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', minHeight: '36px',
+                                                    borderColor: dayFilter === d ? '#6366f1' : '#e2e8f0',
+                                                    background: dayFilter === d ? '#eef2ff' : 'white',
+                                                    color: dayFilter === d ? '#4f46e5' : '#64748b',
+                                                }}>{fmtDateFull(d + 'T00:00:00')}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Stats row — reflects current day filter */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
                                 {[
-                                    { label: 'Total Entries', value: logbook.length, color: '#6366f1' },
-                                    { label: 'Currently In', value: logbook.filter(r => !r.time_out).length, color: '#10b981' },
-                                    { label: 'Checked Out', value: logbook.filter(r => !!r.time_out).length, color: '#94a3b8' },
+                                    { label: 'Total', value: filteredLog.length, color: '#6366f1' },
+                                    { label: 'Present', value: filteredLog.filter(r => !r.time_out).length, color: '#10b981' },
+                                    { label: 'Done', value: filteredLog.filter(r => !!r.time_out).length, color: '#94a3b8' },
                                 ].map((stat) => (
-                                    <div key={stat.label} className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-                                        <p style={{ fontSize: '1.75rem', fontWeight: 800, color: stat.color, letterSpacing: '-0.03em' }}>{stat.value}</p>
-                                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{stat.label}</p>
+                                    <div key={stat.label} className="card" style={{ padding: '1rem 0.5rem', textAlign: 'center' }}>
+                                        <p style={{ fontSize: '1.5rem', fontWeight: 800, color: stat.color, letterSpacing: '-0.03em', lineHeight: 1 }}>{stat.value}</p>
+                                        <p style={{ fontSize: '0.625rem', color: '#94a3b8', marginTop: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{stat.label}</p>
                                     </div>
                                 ))}
                             </div>
 
-                            {/* Filter + Refresh */}
-                            <div className="card" style={{ padding: '1rem 1.5rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        {[{ id: 'all', label: 'All' }, { id: 'in', label: '🟢 Still In' }, { id: 'out', label: '⚪ Checked Out' }].map((f) => (
+                            {/* Filter + Refresh + Export */}
+                            <div className="card" style={{ padding: '1rem' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    {/* Status pills */}
+                                    <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                                        {[{ id: 'all', label: 'All' }, { id: 'in', label: '🟢 Present' }, { id: 'out', label: '⚪ Done' }].map((f) => (
                                             <button key={f.id} onClick={() => setLogFilter(f.id)}
                                                 style={{
-                                                    padding: '0.375rem 0.875rem', borderRadius: '99px', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none',
+                                                    padding: '0.35rem 0.75rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none', minHeight: '34px',
                                                     background: logFilter === f.id ? '#6366f1' : '#f1f5f9',
                                                     color: logFilter === f.id ? 'white' : '#64748b',
-                                                }}
-                                            >{f.label}</button>
+                                                }}>{f.label}</button>
                                         ))}
                                     </div>
-                                    <button onClick={fetchLogbook}
-                                        style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.875rem', borderRadius: '0.5rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                                        Refresh
-                                    </button>
+                                    {/* Refresh + Export */}
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <button onClick={fetchLogbook}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                            Refresh
+                                        </button>
+                                        <button onClick={exportExcel} disabled={filteredLog.length === 0}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: filteredLog.length === 0 ? '#f1f5f9' : '#dcfce7', border: '1.5px solid', borderColor: filteredLog.length === 0 ? '#e2e8f0' : '#86efac', color: filteredLog.length === 0 ? '#94a3b8' : '#16a34a', fontSize: '0.75rem', fontWeight: 700, cursor: filteredLog.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                            📊 Excel
+                                        </button>
+                                        <button onClick={exportPDF} disabled={filteredLog.length === 0}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: filteredLog.length === 0 ? '#f1f5f9' : '#fee2e2', border: '1.5px solid', borderColor: filteredLog.length === 0 ? '#e2e8f0' : '#fca5a5', color: filteredLog.length === 0 ? '#94a3b8' : '#dc2626', fontSize: '0.75rem', fontWeight: 700, cursor: filteredLog.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                            📄 PDF
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 

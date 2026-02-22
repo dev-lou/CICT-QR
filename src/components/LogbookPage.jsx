@@ -9,6 +9,7 @@ export default function LogbookPage({ uuid }) {
     const [logbook, setLogbook] = useState([])
     const [loading, setLoading] = useState(true)
     const [filter, setFilter] = useState('all') // 'all' | 'in' | 'out'
+    const [dayFilter, setDayFilter] = useState('all') // 'all' | 'YYYY-MM-DD'
 
     const fetchData = useCallback(async () => {
         if (!supabase || !uuid) return
@@ -36,13 +37,22 @@ export default function LogbookPage({ uuid }) {
 
     useEffect(() => { fetchData() }, [fetchData])
 
+    const TZ = 'Asia/Manila'
     const fmtTime = (iso) => {
         if (!iso) return '—'
-        return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
+        return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: TZ })
     }
     const fmtDate = (iso) => {
         if (!iso) return ''
-        return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+        return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: TZ })
+    }
+    const fmtDateFull = (iso) => {
+        if (!iso) return ''
+        return new Date(iso).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: TZ })
+    }
+    const dayKey = (iso) => {
+        if (!iso) return ''
+        return new Date(iso).toLocaleDateString('en-CA', { timeZone: TZ })
     }
     const duration = (inT, outT) => {
         if (!outT) return null
@@ -52,7 +62,10 @@ export default function LogbookPage({ uuid }) {
         return h > 0 ? `${h}h ${m}m` : `${m}m`
     }
 
+    const eventDays = [...new Set(logbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
+
     const filtered = logbook.filter((r) => {
+        if (dayFilter !== 'all' && dayKey(r.time_in) !== dayFilter) return false
         if (filter === 'in') return !r.time_out
         if (filter === 'out') return !!r.time_out
         return true
@@ -101,6 +114,31 @@ export default function LogbookPage({ uuid }) {
             </div>
 
             <div style={{ maxWidth: '48rem', margin: '0 auto', padding: '1rem' }}>
+
+                {/* Day selector */}
+                {eventDays.length > 0 && (
+                    <div className="card" style={{ padding: '0.875rem', marginBottom: '0' }}>
+                        <p style={{ fontSize: '0.625rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Event Day</p>
+                        <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                            <button onClick={() => setDayFilter('all')}
+                                style={{
+                                    padding: '0.3rem 0.625rem', borderRadius: '0.4rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', minHeight: '32px',
+                                    borderColor: dayFilter === 'all' ? '#6366f1' : '#e2e8f0',
+                                    background: dayFilter === 'all' ? '#eef2ff' : 'white',
+                                    color: dayFilter === 'all' ? '#4f46e5' : '#64748b',
+                                }}>All Days</button>
+                            {eventDays.map((d) => (
+                                <button key={d} onClick={() => setDayFilter(d)}
+                                    style={{
+                                        padding: '0.3rem 0.625rem', borderRadius: '0.4rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', minHeight: '32px',
+                                        borderColor: dayFilter === d ? '#6366f1' : '#e2e8f0',
+                                        background: dayFilter === d ? '#eef2ff' : 'white',
+                                        color: dayFilter === d ? '#4f46e5' : '#64748b',
+                                    }}>{fmtDateFull(d + 'T00:00:00')}</button>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Stats */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem', marginBottom: '1rem' }}>
@@ -196,6 +234,9 @@ export default function LogbookPage({ uuid }) {
 
                 <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: '#cbd5e1', marginTop: '1rem' }}>
                     {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'} shown
+                </p>
+                <p style={{ textAlign: 'center', fontSize: '0.625rem', color: '#e2e8f0', marginTop: '0.5rem', paddingBottom: '1rem' }}>
+                    Built by Lou Vincent Baroro
                 </p>
             </div>
         </div>

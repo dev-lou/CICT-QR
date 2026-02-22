@@ -181,6 +181,7 @@ export default function Register({ onRegistered }) {
                     </button>
                 </p>
             </motion.div>
+            <p style={{ textAlign: 'center', fontSize: '0.625rem', color: '#cbd5e1', marginTop: '1rem', paddingBottom: '0.5rem' }}>Built by Lou Vincent Baroro</p>
         </div>
     )
 }
