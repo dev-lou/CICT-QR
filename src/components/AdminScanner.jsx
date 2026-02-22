@@ -440,7 +440,7 @@ export default function AdminScanner({ onLogout }) {
                                         style={{ padding: '0.5rem 1.125rem', borderRadius: '0.625rem', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: scanning ? '#fef2f2' : 'linear-gradient(135deg,#6366f1,#06b6d4)', color: scanning ? '#dc2626' : 'white' }}
                                     >{scanning ? 'Stop' : 'Start Scanner'}</button>
                                 </div>
-                                <div style={{ background: '#0f172a', position: 'relative', minHeight: '260px' }}>
+                                <div style={{ background: '#0f172a', position: 'relative', minHeight: '260px', maxHeight: '380px', overflow: 'hidden' }}>
                                     <div id="qr-reader" style={{ width: '100%' }} />
                                     {!scanning && (
                                         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
