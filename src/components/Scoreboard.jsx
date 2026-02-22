@@ -116,7 +116,7 @@ export default function Scoreboard() {
     const [hideBars, setHideBars] = useState(true)
     const [hideAll, setHideAll] = useState(false)
     const [revealState, setRevealState] = useState('idle') // idle | countdown | winner
-    const [countdown, setCountdown] = useState(3)
+    const [countdown, setCountdown] = useState(10)
     const [showConfetti, setShowConfetti] = useState(false)
     const [showControls, setShowControls] = useState(false)
     const [winnerScore, setWinnerScore] = useState(0)
@@ -149,8 +149,8 @@ export default function Scoreboard() {
     }, [])
 
     const startReveal = () => {
-        setRevealState('countdown'); setCountdown(3)
-        let c = 3
+        setRevealState('countdown'); setCountdown(10)
+        let c = 10
         const t = setInterval(() => {
             c -= 1; setCountdown(c)
             if (c <= 0) {
@@ -170,7 +170,7 @@ export default function Scoreboard() {
 
     const resetAll = () => {
         setRevealState('idle'); setShowConfetti(false); setWinnerScore(0)
-        setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false); setHideAll(false)
+        setHideNames(true); setHideScores(true); setHideTop2(true); setHideBars(true); setHideAll(true)
     }
 
     const resetToggles = () => { setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false); setHideAll(false) }
@@ -392,15 +392,15 @@ export default function Scoreboard() {
 
                         <motion.p
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }}
-                            style={{ color: '#1e293b', fontSize: '0.9rem', fontWeight: 500, marginTop: '2rem', textAlign: 'center' }}>
+                            style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600, marginTop: '2rem', textAlign: 'center', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                             IT Week 2026 Champion
                         </motion.p>
 
                         {/* Tap hint */}
                         <motion.p
-                            initial={{ opacity: 0 }} animate={{ opacity: [0, 0.45, 0] }}
+                            initial={{ opacity: 0 }} animate={{ opacity: [0, 0.5, 0] }}
                             transition={{ delay: 3, duration: 2.5, repeat: Infinity }}
-                            style={{ marginTop: '2.25rem', color: '#1e293b', fontSize: '0.75rem', fontWeight: 500, letterSpacing: '0.04em', pointerEvents: 'none' }}>
+                            style={{ marginTop: '2.25rem', color: '#475569', fontSize: '0.75rem', fontWeight: 500, letterSpacing: '0.04em', pointerEvents: 'none' }}>
                             Tap anywhere to continue
                         </motion.p>
                     </motion.div>
