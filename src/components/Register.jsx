@@ -101,7 +101,7 @@ export default function Register({ onRegistered }) {
                         </svg>
                     </div>
                     <h1 className="gradient-text" style={{ fontSize: '1.875rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.4rem' }}>Create Account</h1>
-                    <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Register for ISUFST Attendance</p>
+                    <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Register for IT Week Attendance</p>
                 </motion.div>
 
                 {/* Card */}

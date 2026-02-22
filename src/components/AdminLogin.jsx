@@ -55,7 +55,7 @@ export default function AdminLogin({ onLogin }) {
                         </svg>
                     </div>
                     <h1 style={{ fontSize: '1.625rem', fontWeight: 800, color: 'white', letterSpacing: '-0.025em', marginBottom: '0.375rem' }}>Admin Login</h1>
-                    <p style={{ color: '#64748b', fontSize: '0.9rem' }}>ISUFST Attendance System</p>
+                    <p style={{ color: '#64748b', fontSize: '0.9rem' }}>IT Week Attendance System</p>
                 </motion.div>
 
                 <motion.form

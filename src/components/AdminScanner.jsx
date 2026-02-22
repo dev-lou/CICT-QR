@@ -287,7 +287,7 @@ export default function AdminScanner({ onLogout }) {
                         </div>
                         <div style={{ minWidth: 0 }}>
                             <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>Admin Panel</p>
-                            <p style={{ fontSize: '0.6875rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>ISUFST Attendance</p>
+                            <p style={{ fontSize: '0.6875rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>IT Week Attendance</p>
                         </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>

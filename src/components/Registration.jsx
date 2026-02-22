@@ -99,7 +99,7 @@ export default function Registration({ onRegistered }) {
                         </svg>
                     </div>
                     <h1 className="gradient-text" style={{ fontSize: '1.875rem', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.2, marginBottom: '0.5rem' }}>
-                        ISUFST Attendance
+                        IT Week Attendance
                     </h1>
                     <p style={{ color: '#64748b', fontSize: '0.9375rem' }}>Register to receive your event QR pass</p>
                 </motion.div>
@@ -210,7 +210,7 @@ export default function Registration({ onRegistered }) {
                 </motion.form>
 
                 <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem', marginTop: '1.5rem' }}>
-                    ISUFST Event Attendance System
+                    IT Week Event Attendance System
                 </p>
             </motion.div>
         </div>
