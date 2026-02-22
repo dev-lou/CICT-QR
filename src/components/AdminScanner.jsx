@@ -7,10 +7,12 @@ export default function AdminScanner({ onLogout }) {
     const [activeTab, setActiveTab] = useState('scanner')
     const [mode, setMode] = useState('time-in')
     const [scanning, setScanning] = useState(false)
-    const [result, setResult] = useState(null)
     const [scanCount, setScanCount] = useState(0)
     const html5QrCodeRef = useRef(null)
     const processingRef = useRef(false)
+
+    // Modal alert state (replaces inline result card)
+    const [scanModal, setScanModal] = useState(null) // { type, name, message }
 
     // Logbook state
     const [logbook, setLogbook] = useState([])
@@ -23,12 +25,10 @@ export default function AdminScanner({ onLogout }) {
     const [teamsLoading, setTeamsLoading] = useState(false)
     const [teamError, setTeamError] = useState('')
 
-    useEffect(() => {
-        if (result) {
-            const t = setTimeout(() => setResult(null), 4000)
-            return () => clearTimeout(t)
-        }
-    }, [result])
+    const dismissModal = () => {
+        setScanModal(null)
+        processingRef.current = false  // allow next scan only after admin dismisses
+    }
 
     // ─── Logbook ────────────────────────────────────────────────────────────────
     const fetchLogbook = useCallback(async () => {
@@ -110,41 +110,50 @@ export default function AdminScanner({ onLogout }) {
     // ─── Scanner ─────────────────────────────────────────────────────────────────
     const handleScan = useCallback(async (decodedText) => {
         if (processingRef.current) return
-        processingRef.current = true
+        processingRef.current = true  // stays true until admin dismisses modal
         const scannedUuid = decodedText.trim()
         try {
             const { data: student, error: studentErr } = await supabase
                 .from('students').select('id, full_name, uuid').eq('uuid', scannedUuid).single()
             if (studentErr || !student) {
-                setResult({ type: 'error', name: '', message: 'Student not found.' })
-                processingRef.current = false; return
+                setScanModal({ type: 'error', name: '', message: 'Student not found.' })
+                return
             }
             if (mode === 'time-in') {
                 const { data: existing } = await supabase
                     .from('logbook').select('id').eq('student_id', student.id).is('time_out', null).limit(1)
                 if (existing && existing.length > 0) {
-                    setResult({ type: 'error', name: student.full_name, message: 'Already checked in!' })
-                    processingRef.current = false; return
+                    setScanModal({ type: 'warning', name: student.full_name, message: 'Already checked in! Please use Time-Out mode.' })
+                    return
                 }
                 const { error: insertErr } = await supabase.from('logbook').insert([{ student_id: student.id }])
                 if (insertErr) throw insertErr
-                setResult({ type: 'success', name: student.full_name, message: 'Checked In ✓' })
+                setScanModal({ type: 'success', name: student.full_name, message: 'Successfully Checked In!' })
             } else {
                 const { data: openEntry, error: findErr } = await supabase
                     .from('logbook').select('id').eq('student_id', student.id).is('time_out', null)
                     .order('time_in', { ascending: false }).limit(1).single()
                 if (findErr || !openEntry) {
-                    setResult({ type: 'error', name: student.full_name, message: 'No active check-in found.' })
-                    processingRef.current = false; return
+                    // Check if they were already fully checked out
+                    const { data: lastOut } = await supabase
+                        .from('logbook').select('id, time_out').eq('student_id', student.id)
+                        .not('time_out', 'is', null).order('time_out', { ascending: false }).limit(1)
+                    if (lastOut && lastOut.length > 0) {
+                        setScanModal({ type: 'warning', name: student.full_name, message: 'Already checked out! No active check-in found.' })
+                    } else {
+                        setScanModal({ type: 'error', name: student.full_name, message: 'No active check-in found for this student.' })
+                    }
+                    return
                 }
                 const { error: updateErr } = await supabase
                     .from('logbook').update({ time_out: new Date().toISOString() }).eq('id', openEntry.id)
                 if (updateErr) throw updateErr
-                setResult({ type: 'info', name: student.full_name, message: 'Checked Out ✓' })
+                setScanModal({ type: 'info', name: student.full_name, message: 'Successfully Checked Out!' })
             }
         } catch (err) {
-            setResult({ type: 'error', name: '', message: err.message || 'An error occurred.' })
-        } finally { processingRef.current = false }
+            setScanModal({ type: 'error', name: '', message: err.message || 'An error occurred.' })
+        }
+        // NOTE: processingRef.current is NOT reset here — it resets on modal dismiss
     }, [mode])
 
     const startScanner = useCallback(async () => {
@@ -188,35 +197,114 @@ export default function AdminScanner({ onLogout }) {
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'inherit' }}>
 
+            {/* ── SCAN RESULT MODAL ───────────────────────────────────────────── */}
+            <AnimatePresence>
+                {scanModal && (
+                    <motion.div
+                        key="scan-modal"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        style={{ position: 'fixed', inset: 0, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(6px)' }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.85, opacity: 0, y: 24 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+                            style={{ background: 'white', borderRadius: '1.5rem', padding: '2.5rem 2rem', maxWidth: '22rem', width: '100%', textAlign: 'center', boxShadow: '0 24px 64px -12px rgba(0,0,0,0.35)' }}
+                        >
+                            {/* Icon circle */}
+                            <div style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                width: '5rem', height: '5rem', borderRadius: '50%', marginBottom: '1.25rem',
+                                background: scanModal.type === 'success' ? '#dcfce7'
+                                    : scanModal.type === 'warning' ? '#fef9c3'
+                                        : scanModal.type === 'info' ? '#dbeafe'
+                                            : '#fee2e2',
+                            }}>
+                                {scanModal.type === 'success' && (
+                                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#16a34a" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                )}
+                                {scanModal.type === 'info' && (
+                                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#2563eb" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                                )}
+                                {scanModal.type === 'warning' && (
+                                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#ca8a04" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                )}
+                                {scanModal.type === 'error' && (
+                                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#dc2626" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                )}
+                            </div>
+
+                            {/* Student name */}
+                            {scanModal.name && (
+                                <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em', marginBottom: '0.5rem', lineHeight: 1.2 }}>
+                                    {scanModal.name}
+                                </p>
+                            )}
+
+                            {/* Message */}
+                            <p style={{
+                                fontSize: '1rem', fontWeight: 600, marginBottom: '1.75rem',
+                                color: scanModal.type === 'success' ? '#16a34a'
+                                    : scanModal.type === 'warning' ? '#ca8a04'
+                                        : scanModal.type === 'info' ? '#2563eb'
+                                            : '#dc2626',
+                            }}>
+                                {scanModal.message}
+                            </p>
+
+                            {/* OK button */}
+                            <motion.button
+                                whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                                onClick={dismissModal}
+                                style={{
+                                    width: '100%', padding: '0.9rem', borderRadius: '0.875rem', border: 'none', cursor: 'pointer',
+                                    fontFamily: 'inherit', fontSize: '1rem', fontWeight: 700,
+                                    background: scanModal.type === 'success' ? 'linear-gradient(135deg,#6366f1,#06b6d4)'
+                                        : scanModal.type === 'warning' ? '#fbbf24'
+                                            : scanModal.type === 'info' ? '#3b82f6'
+                                                : '#ef4444',
+                                    color: 'white',
+                                }}
+                            >
+                                OK — Scan Next
+                            </motion.button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Header */}
             <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 50 }}>
-                <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-                        <div style={{ width: '2.25rem', height: '2.25rem', borderRadius: '0.625rem', background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}>
+                <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '0.875rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', minWidth: 0 }}>
+                        <div style={{ width: '2rem', height: '2rem', minWidth: '2rem', borderRadius: '0.5rem', background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                             </svg>
                         </div>
-                        <div>
-                            <p style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>Admin Panel</p>
-                            <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>ISUFST Attendance</p>
+                        <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>Admin Panel</p>
+                            <p style={{ fontSize: '0.6875rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>ISUFST Attendance</p>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
                         <div style={{ textAlign: 'right' }}>
-                            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#6366f1', lineHeight: 1 }}>{scanCount}</p>
-                            <p style={{ fontSize: '0.6875rem', color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Scanned Today</p>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 800, color: '#6366f1', lineHeight: 1 }}>{scanCount}</p>
+                            <p style={{ fontSize: '0.5625rem', color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Today</p>
                         </div>
                         <button
                             onClick={() => { stopScanner(); onLogout() }}
-                            style={{ padding: '0.5rem 1rem', borderRadius: '0.625rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                            style={{ padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: '44px' }}
                         >Logout</button>
                     </div>
                 </div>
             </div>
 
             {/* Tab Nav */}
-            <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1.25rem 1.5rem 0' }}>
+            <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1rem 1rem 0' }}>
                 <div className="tab-nav">
                     {[
                         { id: 'scanner', label: '📷 Scanner' },
@@ -240,14 +328,16 @@ export default function AdminScanner({ onLogout }) {
                             style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
                             {/* Mode toggle */}
-                            <div className="card" style={{ padding: '1.125rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                                <div>
-                                    <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9375rem', marginBottom: '0.2rem' }}>Scan Mode</p>
-                                    <p style={{ color: '#64748b', fontSize: '0.8125rem' }}>{mode === 'time-in' ? 'Recording arrivals' : 'Recording departures'}</p>
+                            <div className="card" style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <div>
+                                        <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9375rem', marginBottom: '0.1rem' }}>Scan Mode</p>
+                                        <p style={{ color: '#64748b', fontSize: '0.8125rem' }}>{mode === 'time-in' ? 'Recording arrivals' : 'Recording departures'}</p>
+                                    </div>
                                 </div>
-                                <div className="mode-toggle" style={{ minWidth: '200px' }}>
-                                    <button className={`mode-toggle-btn ${mode === 'time-in' ? 'active' : ''}`} onClick={() => setMode('time-in')}>⏰ Time In</button>
-                                    <button className={`mode-toggle-btn ${mode === 'time-out' ? 'active' : ''}`} onClick={() => setMode('time-out')}>🚪 Time Out</button>
+                                <div className="mode-toggle" style={{ width: '100%' }}>
+                                    <button className={`mode-toggle-btn ${mode === 'time-in' ? 'active' : ''}`} onClick={() => setMode('time-in')} style={{ minHeight: '44px' }}>⏰ Time In</button>
+                                    <button className={`mode-toggle-btn ${mode === 'time-out' ? 'active' : ''}`} onClick={() => setMode('time-out')} style={{ minHeight: '44px' }}>🚪 Time Out</button>
                                 </div>
                             </div>
 
@@ -275,28 +365,6 @@ export default function AdminScanner({ onLogout }) {
                                     )}
                                 </div>
                             </div>
-
-                            {/* Scan result */}
-                            <AnimatePresence mode="wait">
-                                {result && (
-                                    <motion.div key={result.message + result.name}
-                                        initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-                                        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-                                        className={`result-card result-card-${result.type}`}>
-                                        <div style={{
-                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '4rem', height: '4rem', borderRadius: '50%', marginBottom: '1rem',
-                                            background: result.type === 'success' ? '#dcfce7' : result.type === 'error' ? '#fee2e2' : '#dbeafe'
-                                        }}>
-                                            {result.type === 'error'
-                                                ? <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="#dc2626" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                                                : <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke={result.type === 'success' ? '#16a34a' : '#2563eb'} strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                            }
-                                        </div>
-                                        {result.name && <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.375rem', letterSpacing: '-0.02em' }}>{result.name}</p>}
-                                        <p style={{ fontSize: '1rem', fontWeight: 600, color: result.type === 'success' ? '#16a34a' : result.type === 'error' ? '#dc2626' : '#2563eb' }}>{result.message}</p>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
 
                             {/* Mini logbook preview (last 5) */}
                             {logbook.length > 0 && (
@@ -369,7 +437,7 @@ export default function AdminScanner({ onLogout }) {
                                 </div>
                             </div>
 
-                            {/* Table */}
+                            {/* Logbook entries — mobile-friendly cards */}
                             <div className="card" style={{ overflow: 'hidden' }}>
                                 {logLoading ? (
                                     <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
@@ -384,39 +452,36 @@ export default function AdminScanner({ onLogout }) {
                                         <p style={{ fontSize: '0.8125rem' }}>Scan QR codes to populate the logbook</p>
                                     </div>
                                 ) : (
-                                    <div style={{ overflowX: 'auto' }}>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                                            <thead>
-                                                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                                                    {['Student', 'Team', 'Date', 'Time In', 'Time Out', 'Status'].map((h) => (
-                                                        <th key={h} style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: '0.8125rem', letterSpacing: '0.03em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {filteredLog.map((row, i) => (
-                                                    <motion.tr key={row.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-                                                        style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#fdfdfe' }}
-                                                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8f9ff'}
-                                                        onMouseLeave={(e) => e.currentTarget.style.background = i % 2 === 0 ? 'white' : '#fdfdfe'}
-                                                    >
-                                                        <td style={{ padding: '0.875rem 1rem', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{row.students?.full_name}</td>
-                                                        <td style={{ padding: '0.875rem 1rem', color: '#64748b' }}>
-                                                            <span className="badge badge-brand" style={{ fontSize: '0.725rem', padding: '0.2rem 0.625rem' }}>{row.students?.team_name}</span>
-                                                        </td>
-                                                        <td style={{ padding: '0.875rem 1rem', color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(row.time_in)}</td>
-                                                        <td style={{ padding: '0.875rem 1rem', color: '#1e293b', fontWeight: 500, whiteSpace: 'nowrap' }}>{fmtTime(row.time_in)}</td>
-                                                        <td style={{ padding: '0.875rem 1rem', color: row.time_out ? '#1e293b' : '#94a3b8', fontWeight: row.time_out ? 500 : 400, whiteSpace: 'nowrap' }}>{fmtTime(row.time_out)}</td>
-                                                        <td style={{ padding: '0.875rem 1rem' }}>
-                                                            <span className={`badge ${row.time_out ? '' : 'badge-success'}`}
-                                                                style={{ fontSize: '0.725rem', padding: '0.25rem 0.625rem', background: row.time_out ? '#f1f5f9' : '', color: row.time_out ? '#64748b' : '' }}>
-                                                                {row.time_out ? 'Checked Out' : '● Present'}
-                                                            </span>
-                                                        </td>
-                                                    </motion.tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        {filteredLog.map((row, i) => (
+                                            <motion.div key={row.id}
+                                                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
+                                                style={{
+                                                    padding: '0.875rem 1.25rem',
+                                                    borderBottom: i < filteredLog.length - 1 ? '1px solid #f1f5f9' : 'none',
+                                                    background: i % 2 === 0 ? 'white' : '#fdfdfe',
+                                                }}
+                                            >
+                                                {/* Row top: name + status badge */}
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem', gap: '0.5rem' }}>
+                                                    <p style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9375rem', lineHeight: 1.2 }}>{row.students?.full_name}</p>
+                                                    <span style={{
+                                                        fontSize: '0.6875rem', padding: '0.2rem 0.625rem', borderRadius: '99px', fontWeight: 600, flexShrink: 0,
+                                                        background: row.time_out ? '#f1f5f9' : '#dcfce7',
+                                                        color: row.time_out ? '#64748b' : '#16a34a',
+                                                    }}>
+                                                        {row.time_out ? 'Checked Out' : '● Present'}
+                                                    </span>
+                                                </div>
+                                                {/* Row bottom: team + date + times */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+                                                    <span className="badge badge-brand" style={{ fontSize: '0.6875rem', padding: '0.15rem 0.5rem' }}>{row.students?.team_name}</span>
+                                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{fmtDate(row.time_in)}</span>
+                                                    <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>In: {fmtTime(row.time_in)}</span>
+                                                    {row.time_out && <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>Out: {fmtTime(row.time_out)}</span>}
+                                                </div>
+                                            </motion.div>
+                                        ))}
                                     </div>
                                 )}
                             </div>
