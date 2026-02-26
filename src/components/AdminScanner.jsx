@@ -881,92 +881,124 @@ export default function AdminScanner({ onLogout }) {
 
                             {/* Team score cards */}
                             {scoreLoading ? (
-                                <p style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>Loading…</p>
-                            ) : [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).map((team, idx) => {
-                                const score = team.score ?? 150
-                                const pct = Math.min((score / 150) * 100, 100)
-                                const rankColors = ['#f59e0b', '#94a3b8', '#d97706']
-                                const rankLabel = idx < 3 ? idx + 1 : `#${idx + 1}`
-                                const rankBg = idx < 3 ? rankColors[idx] : '#e2e8f0'
-                                const rankTextColor = idx < 3 ? 'white' : '#64748b'
-                                const pts = parseInt(scoreReason[team.id + '_pts'] || '10', 10) || 10
-                                const applyScore = async (delta) => {
-                                    if (!supabase || submitting.has(team.id)) return
-                                    setSubmitting(prev => new Set(prev).add(team.id))
-                                    try {
-                                        const newScore = Math.max(0, score + delta)
-                                        const reason = scoreReason[team.id] || ''
-                                        await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
-                                        await supabase.from('score_logs').insert({ team_id: team.id, team_name: team.name, delta, reason })
-                                        setScoreReason(prev => ({ ...prev, [team.id]: '', [team.id + '_pts']: '' }))
-                                        fetchTeams()
-                                        fetchScoreLogs()
-                                        const isMerit = delta > 0
-                                        Swal.fire({
-                                            toast: true,
-                                            position: 'top-end',
-                                            icon: isMerit ? 'success' : 'error',
-                                            title: `${isMerit ? 'Merit' : 'Demerit'} applied!`,
-                                            html: `<strong>${team.name}</strong> &nbsp;<span style="color:${isMerit ? '#16a34a' : '#dc2626'};font-weight:700">${isMerit ? '+' : ''}${delta} pts</span>${reason ? `<br><span style="font-size:0.8em;color:#64748b">${reason}</span>` : ''}`,
-                                            showConfirmButton: false,
-                                            timer: 3000,
-                                            timerProgressBar: true,
-                                        })
-                                    } finally {
-                                        setSubmitting(prev => { const s = new Set(prev); s.delete(team.id); return s })
-                                    }
-                                }
-                                const isBusy = submitting.has(team.id)
-                                return (
-                                    <div key={team.id} className="card" style={{ padding: '1.25rem' }}>
-                                        {/* Header row */}
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                                                <div style={{ width: '2rem', height: '2rem', borderRadius: '0.5rem', background: rankBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: idx < 3 ? '0.875rem' : '0.75rem', color: rankTextColor, flexShrink: 0 }}>{rankLabel}</div>
-                                                <span style={{ fontWeight: 700, fontSize: '1rem', color: '#0f172a' }}>{team.name}</span>
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem 0' }}>
+                                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                        style={{ width: 28, height: 28, border: '3px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%' }} />
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+                                    {[...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).map((team, idx) => {
+                                        const score = team.score ?? 150
+                                        const pts = parseInt(scoreReason[team.id + '_pts'] || '10', 10) || 10
+
+                                        const applyScore = async (delta) => {
+                                            if (!supabase || submitting.has(team.id)) return
+                                            setSubmitting(prev => new Set(prev).add(team.id))
+                                            try {
+                                                const newScore = Math.max(0, score + delta)
+                                                const reason = scoreReason[team.id] || ''
+                                                await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
+                                                await supabase.from('score_logs').insert({ team_id: team.id, team_name: team.name, delta, reason })
+                                                setScoreReason(prev => ({ ...prev, [team.id]: '', [team.id + '_pts']: '' }))
+                                                fetchTeams()
+                                                fetchScoreLogs()
+
+                                                const isMerit = delta > 0
+                                                Swal.fire({
+                                                    toast: true, position: 'top-end', icon: isMerit ? 'success' : 'error',
+                                                    title: `${isMerit ? 'Merit' : 'Demerit'} applied!`,
+                                                    html: `<strong>${team.name}</strong> &nbsp;<span style="color:${isMerit ? '#16a34a' : '#dc2626'};font-weight:700">${isMerit ? '+' : ''}${delta} pts</span>${reason ? `<br><span style="font-size:0.8em;color:#64748b">${reason}</span>` : ''}`,
+                                                    showConfirmButton: false, timer: 3000, timerProgressBar: true,
+                                                })
+                                            } finally {
+                                                setSubmitting(prev => { const s = new Set(prev); s.delete(team.id); return s })
+                                            }
+                                        }
+
+                                        const isBusy = submitting.has(team.id)
+
+                                        return (
+                                            <div key={team.id} style={{
+                                                background: 'white', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem',
+                                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', position: 'relative', overflow: 'hidden'
+                                            }}>
+                                                {/* Rank ribbon logic */}
+                                                {idx === 0 && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />}
+
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                                                    <div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                                            <span style={{
+                                                                background: idx === 0 ? '#fef3c7' : idx === 1 ? '#f1f5f9' : idx === 2 ? '#ffedd5' : '#f8fafc',
+                                                                color: idx === 0 ? '#d97706' : idx === 1 ? '#64748b' : idx === 2 ? '#c2410c' : '#94a3b8',
+                                                                fontSize: '0.6875rem', fontWeight: 800, padding: '0.125rem 0.5rem', borderRadius: '99px'
+                                                            }}>
+                                                                {idx === 0 ? '1ST PLACE' : idx === 1 ? '2ND PLACE' : idx === 2 ? '3RD PLACE' : `RANK ${idx + 1}`}
+                                                            </span>
+                                                        </div>
+                                                        <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 800, color: '#0f172a' }}>{team.name}</h3>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <span style={{ fontSize: '2rem', fontWeight: 900, color: '#6366f1', lineHeight: 1, letterSpacing: '-0.03em' }}>{score}</span>
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', marginLeft: '0.25rem', textTransform: 'uppercase' }}>pts</span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ background: '#f8fafc', borderRadius: '0.75rem', padding: '0.875rem', border: '1px solid #f1f5f9' }}>
+                                                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                                        <input
+                                                            type="text"
+                                                            value={scoreReason[team.id] || ''}
+                                                            onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id]: e.target.value }))}
+                                                            placeholder="📝 Reason (optional)"
+                                                            style={{
+                                                                flex: 1, padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid #e2e8f0', fontSize: '0.875rem', outline: 'none', transition: 'border-color 0.2s'
+                                                            }}
+                                                            onFocus={(e) => e.target.style.borderColor = '#6366f1'}
+                                                            onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                                                        />
+                                                        <input
+                                                            type="number" min="1"
+                                                            value={scoreReason[team.id + '_pts'] || ''}
+                                                            onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id + '_pts']: e.target.value }))}
+                                                            placeholder="10"
+                                                            style={{
+                                                                width: '72px', padding: '0.625rem', borderRadius: '0.5rem', border: '1px solid #e2e8f0', fontSize: '0.9375rem', fontWeight: 700, textAlign: 'center', outline: 'none'
+                                                            }}
+                                                            onFocus={(e) => e.target.style.borderColor = '#6366f1'}
+                                                            onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                                                        />
+                                                    </div>
+
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                                        <motion.button
+                                                            whileHover={{ scale: isBusy ? 1 : 1.02 }} whileTap={{ scale: isBusy ? 1 : 0.98 }}
+                                                            onClick={() => applyScore(+pts)} disabled={isBusy}
+                                                            style={{
+                                                                padding: '0.625rem', borderRadius: '0.5rem',
+                                                                background: 'linear-gradient(180deg, #22c55e, #16a34a)', color: 'white', border: 'none',
+                                                                fontWeight: 700, fontSize: '0.875rem', cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1,
+                                                                boxShadow: '0 2px 4px rgba(22,163,74,0.2)'
+                                                            }}>
+                                                            + Add Merit
+                                                        </motion.button>
+                                                        <motion.button
+                                                            whileHover={{ scale: isBusy ? 1 : 1.02 }} whileTap={{ scale: isBusy ? 1 : 0.98 }}
+                                                            onClick={() => applyScore(-pts)} disabled={isBusy}
+                                                            style={{
+                                                                padding: '0.625rem', borderRadius: '0.5rem',
+                                                                background: 'white', color: '#dc2626', border: '1.5px solid #fca5a5',
+                                                                fontWeight: 700, fontSize: '0.875rem', cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1,
+                                                            }}>
+                                                            - Minus
+                                                        </motion.button>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <span style={{ fontSize: '1.625rem', fontWeight: 900, color: '#6366f1', lineHeight: 1 }}>{score} <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500 }}>pts</span></span>
-                                        </div>
-                                        {/* Progress bar */}
-                                        <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden', marginBottom: '1rem' }}>
-                                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#6366f1,#06b6d4)', borderRadius: '99px', transition: 'width 0.5s ease' }} />
-                                        </div>
-                                        {/* Controls row: reason + points + buttons */}
-                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                                            {/* Reason */}
-                                            <input
-                                                className="input" type="text"
-                                                value={scoreReason[team.id] || ''}
-                                                onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id]: e.target.value }))}
-                                                placeholder="Reason (e.g. Won quiz)"
-                                                style={{ flex: '2 1 120px', fontSize: '0.8125rem', padding: '0.5rem 0.75rem', minWidth: '100px' }}
-                                            />
-                                            {/* Points amount */}
-                                            <input
-                                                className="input" type="number" min="1"
-                                                value={scoreReason[team.id + '_pts'] || ''}
-                                                onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id + '_pts']: e.target.value }))}
-                                                placeholder="Pts"
-                                                style={{ flex: '0 0 64px', fontSize: '0.9375rem', fontWeight: 700, padding: '0.5rem 0.5rem', textAlign: 'center', width: '64px' }}
-                                            />
-                                            {/* + Merit */}
-                                            <motion.button whileHover={{ scale: isBusy ? 1 : 1.05 }} whileTap={{ scale: isBusy ? 1 : 0.95 }}
-                                                onClick={() => applyScore(+pts)}
-                                                disabled={isBusy}
-                                                style={{ flex: '1 1 80px', padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#dcfce7', border: '1.5px solid #86efac', color: '#16a34a', fontWeight: 800, fontSize: '1rem', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', opacity: isBusy ? 0.5 : 1 }}>
-                                                <span style={{ fontSize: '1.1rem' }}>＋</span> {isBusy ? '…' : 'Merit'}
-                                            </motion.button>
-                                            {/* − Demerit */}
-                                            <motion.button whileHover={{ scale: isBusy ? 1 : 1.05 }} whileTap={{ scale: isBusy ? 1 : 0.95 }}
-                                                onClick={() => applyScore(-pts)}
-                                                disabled={isBusy}
-                                                style={{ flex: '1 1 80px', padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#fee2e2', border: '1.5px solid #fca5a5', color: '#dc2626', fontWeight: 800, fontSize: '1rem', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', opacity: isBusy ? 0.5 : 1 }}>
-                                                <span style={{ fontSize: '1.1rem' }}>－</span> {isBusy ? '…' : 'Demerit'}
-                                            </motion.button>
-                                        </div>
-                                    </div>
-                                )
-                            })}
+                                        )
+                                    })}
+                                </div>
+                            )}
 
                             {/* Recent action log */}
                             {scoreLog.length > 0 && (
