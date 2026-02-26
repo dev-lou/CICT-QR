@@ -216,6 +216,21 @@ export default function Dashboard({ uuid }) {
                 </div>
 
             </div>
+
+            {/* Conditional Admin Access for Leaders & Facilitators */}
+            {(student?.role === 'leader' || student?.role === 'facilitator') && (
+                <div style={{ position: 'fixed', bottom: '1rem', left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', fontSize: '0.6875rem' }}>
+                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                    <a
+                        href="/admin"
+                        style={{ color: '#64748b', textDecoration: 'none', fontWeight: 600, transition: 'color 0.15s ease' }}
+                        onMouseOver={(e) => e.currentTarget.style.color = '#0f172a'}
+                        onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                    >
+                        Admin Access
+                    </a>
+                </div>
+            )}
         </div>
     )
 }
