@@ -253,9 +253,9 @@ export default function AdminScanner({ onLogout }) {
             }
 
             // Route to correct logbook table based on role
-            const isStaff = student.role === 'leader' || student.role === 'facilitator'
+            const isStaff = student.role === 'leader' || student.role === 'facilitator' || student.role === 'executive' || student.role === 'bod'
             const table = isStaff ? 'staff_logbook' : 'logbook'
-            const roleLabel = student.role === 'leader' ? '⭐ Leader' : student.role === 'facilitator' ? '🎯 Facilitator' : '🎓 Student'
+            const roleLabel = student.role === 'leader' ? '⭐ Leader' : student.role === 'facilitator' ? '🎯 Facilitator' : student.role === 'executive' ? '👔 Executive' : student.role === 'bod' ? '🏛️ BOD' : '🎓 Student'
 
             if (mode === 'time-in') {
                 const { data: existing } = await supabase
@@ -347,6 +347,15 @@ export default function AdminScanner({ onLogout }) {
         if (dayFilter !== 'all' && dayKey(r.time_in) !== dayFilter) return false
         if (logFilter === 'in') return !r.time_out
         if (logFilter === 'out') return !!r.time_out
+        return true
+    })
+
+    // Staff filter logic (moved from render scope)
+    const staffEventDays = [...new Set(staffLogbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
+    const filteredStaff = staffLogbook.filter((r) => {
+        if (staffDayFilter !== 'all' && dayKey(r.time_in) !== staffDayFilter) return false
+        if (staffLogFilter === 'in') return !r.time_out
+        if (staffLogFilter === 'out') return !!r.time_out
         return true
     })
 
@@ -855,119 +864,110 @@ export default function AdminScanner({ onLogout }) {
                     )}
 
                     {/* ── STAFF LOGBOOK TAB ────────────────────────────────── */}
-                    {activeTab === 'staff' && (() => {
-                        const staffEventDays = [...new Set(staffLogbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
-                        const filteredStaff = staffLogbook.filter((r) => {
-                            if (staffDayFilter !== 'all' && dayKey(r.time_in) !== staffDayFilter) return false
-                            if (staffLogFilter === 'in') return !r.time_out
-                            if (staffLogFilter === 'out') return !!r.time_out
-                            return true
-                        })
-                        return (
-                            <motion.div key="staff" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                                style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {activeTab === 'staff' && (
+                        <motion.div key="staff" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                            style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-                                {/* Stats */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
-                                    {[
-                                        { label: 'Total', value: filteredStaff.length, color: '#7B1C1C' },
-                                        { label: 'Present', value: filteredStaff.filter(r => !r.time_out).length, color: '#16a34a' },
-                                        { label: 'Done', value: filteredStaff.filter(r => !!r.time_out).length, color: '#64748b' },
-                                    ].map((s) => (
-                                        <div key={s.label} className="card" style={{ padding: '1rem 0.5rem', textAlign: 'center' }}>
-                                            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, letterSpacing: '-0.03em', lineHeight: 1 }}>{s.value}</p>
-                                            <p style={{ fontSize: '0.625rem', color: '#94a3b8', marginTop: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</p>
-                                        </div>
-                                    ))}
-                                </div>
+                            {/* Stats */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
+                                {[
+                                    { label: 'Total', value: filteredStaff.length, color: '#7B1C1C' },
+                                    { label: 'Present', value: filteredStaff.filter(r => !r.time_out).length, color: '#16a34a' },
+                                    { label: 'Done', value: filteredStaff.filter(r => !!r.time_out).length, color: '#64748b' },
+                                ].map((s) => (
+                                    <div key={s.label} className="card" style={{ padding: '1rem 0.5rem', textAlign: 'center' }}>
+                                        <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, letterSpacing: '-0.03em', lineHeight: 1 }}>{s.value}</p>
+                                        <p style={{ fontSize: '0.625rem', color: '#94a3b8', marginTop: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</p>
+                                    </div>
+                                ))}
+                            </div>
 
-                                {/* Filters */}
-                                <div className="card" style={{ padding: '1rem' }}>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                                            {[{ id: 'all', label: 'All' }, { id: 'in', label: '🟢 Present' }, { id: 'out', label: '⚪ Done' }].map((f) => (
-                                                <button key={f.id} onClick={() => setStaffLogFilter(f.id)}
-                                                    style={{ padding: '0.35rem 0.75rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none', minHeight: '34px', background: staffLogFilter === f.id ? '#7B1C1C' : '#f1f5f9', color: staffLogFilter === f.id ? 'white' : '#64748b' }}>
-                                                    {f.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                            <button onClick={fetchStaffLogbook}
-                                                style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
-                                                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                                                Refresh
+                            {/* Filters */}
+                            <div className="card" style={{ padding: '1rem' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                                        {[{ id: 'all', label: 'All' }, { id: 'in', label: '🟢 Present' }, { id: 'out', label: '⚪ Done' }].map((f) => (
+                                            <button key={f.id} onClick={() => setStaffLogFilter(f.id)}
+                                                style={{ padding: '0.35rem 0.75rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none', minHeight: '34px', background: staffLogFilter === f.id ? '#7B1C1C' : '#f1f5f9', color: staffLogFilter === f.id ? 'white' : '#64748b' }}>
+                                                {f.label}
                                             </button>
-                                            <button onClick={exportExcelStaff} disabled={filteredStaff.length === 0}
-                                                style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: filteredStaff.length === 0 ? '#f1f5f9' : '#dcfce7', border: '1.5px solid', borderColor: filteredStaff.length === 0 ? '#e2e8f0' : '#86efac', color: filteredStaff.length === 0 ? '#94a3b8' : '#16a34a', fontSize: '0.75rem', fontWeight: 700, cursor: filteredStaff.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
-                                                📊 Excel
-                                            </button>
-                                            <button onClick={exportPDFStaff} disabled={filteredStaff.length === 0}
-                                                style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: filteredStaff.length === 0 ? '#f1f5f9' : '#fee2e2', border: '1.5px solid', borderColor: filteredStaff.length === 0 ? '#e2e8f0' : '#fca5a5', color: filteredStaff.length === 0 ? '#94a3b8' : '#dc2626', fontSize: '0.75rem', fontWeight: 700, cursor: filteredStaff.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
-                                                📄 PDF
-                                            </button>
-                                        </div>
+                                        ))}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <button onClick={fetchStaffLogbook}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                            Refresh
+                                        </button>
+                                        <button onClick={exportExcelStaff} disabled={filteredStaff.length === 0}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: filteredStaff.length === 0 ? '#f1f5f9' : '#dcfce7', border: '1.5px solid', borderColor: filteredStaff.length === 0 ? '#e2e8f0' : '#86efac', color: filteredStaff.length === 0 ? '#94a3b8' : '#16a34a', fontSize: '0.75rem', fontWeight: 700, cursor: filteredStaff.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                            📊 Excel
+                                        </button>
+                                        <button onClick={exportPDFStaff} disabled={filteredStaff.length === 0}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: filteredStaff.length === 0 ? '#f1f5f9' : '#fee2e2', border: '1.5px solid', borderColor: filteredStaff.length === 0 ? '#e2e8f0' : '#fca5a5', color: filteredStaff.length === 0 ? '#94a3b8' : '#dc2626', fontSize: '0.75rem', fontWeight: 700, cursor: filteredStaff.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                            📄 PDF
+                                        </button>
                                     </div>
                                 </div>
+                            </div>
 
-                                {/* Table */}
-                                <div className="card" style={{ overflow: 'hidden' }}>
-                                    {staffLogLoading ? (
-                                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
-                                            <p style={{ fontSize: '0.875rem' }}>Loading staff logbook…</p>
-                                        </div>
-                                    ) : filteredStaff.length === 0 ? (
-                                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
-                                            <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.25rem' }}>No staff records yet</p>
-                                            <p style={{ fontSize: '0.8125rem' }}>Scan leader or facilitator QR codes to populate this log</p>
-                                        </div>
-                                    ) : (
-                                        <div style={{ overflowX: 'auto' }}>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                                                <thead>
-                                                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                                        {['#', 'Name', 'Role', 'Team', 'Date', 'Time In', 'Time Out', 'Status'].map((h, hi) => (
-                                                            <th key={h} style={{ padding: '0.625rem 0.875rem', fontSize: '0.6875rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap', textAlign: hi === 0 || hi === 7 ? 'center' : 'left' }}>{h}</th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {filteredStaff.map((row, i) => {
-                                                        const tdBase = { padding: '0.75rem 0.875rem', borderBottom: i < filteredStaff.length - 1 ? '1px solid #f1f5f9' : 'none', background: i % 2 === 0 ? 'white' : '#fafafa', verticalAlign: 'middle' }
-                                                        const roleColor = row.students?.role === 'leader' ? { bg: '#fdf0f0', text: '#7B1C1C' } : { bg: '#fefce8', text: '#854d0e' }
-                                                        return (
-                                                            <motion.tr key={row.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.015, 0.3) }}>
-                                                                <td style={{ ...tdBase, textAlign: 'center', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{i + 1}</td>
-                                                                <td style={{ ...tdBase, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>{row.students?.full_name}</td>
-                                                                <td style={tdBase}>
-                                                                    <span style={{ background: roleColor.bg, color: roleColor.text, fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
-                                                                        {row.students?.role}
-                                                                    </span>
-                                                                </td>
-                                                                <td style={tdBase}>
-                                                                    <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap' }}>
-                                                                        {row.students?.team_name}
-                                                                    </span>
-                                                                </td>
-                                                                <td style={{ ...tdBase, color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{fmtDate(row.time_in)}</td>
-                                                                <td style={{ ...tdBase, color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_in)}</td>
-                                                                <td style={{ ...tdBase, color: row.time_out ? '#0f172a' : '#cbd5e1', fontWeight: row.time_out ? 600 : 400, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_out)}</td>
-                                                                <td style={{ ...tdBase, textAlign: 'center' }}>
-                                                                    <span style={{ display: 'inline-block', padding: '0.2rem 0.625rem', borderRadius: '99px', fontSize: '0.6875rem', fontWeight: 700, whiteSpace: 'nowrap', background: row.time_out ? '#f1f5f9' : '#dcfce7', color: row.time_out ? '#64748b' : '#16a34a', border: `1px solid ${row.time_out ? '#e2e8f0' : '#86efac'}` }}>
-                                                                        {row.time_out ? 'Done' : '● Present'}
-                                                                    </span>
-                                                                </td>
-                                                            </motion.tr>
-                                                        )
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            </motion.div>
-                        )
-                    })()}
+                            {/* Table */}
+                            <div className="card" style={{ overflow: 'hidden' }}>
+                                {staffLogLoading ? (
+                                    <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                                        <p style={{ fontSize: '0.875rem' }}>Loading staff logbook…</p>
+                                    </div>
+                                ) : filteredStaff.length === 0 ? (
+                                    <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                                        <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.25rem' }}>No staff records yet</p>
+                                        <p style={{ fontSize: '0.8125rem' }}>Scan leader or facilitator QR codes to populate this log</p>
+                                    </div>
+                                ) : (
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                                            <thead>
+                                                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                                    {['#', 'Name', 'Role', 'Team', 'Date', 'Time In', 'Time Out', 'Status'].map((h, hi) => (
+                                                        <th key={h} style={{ padding: '0.625rem 0.875rem', fontSize: '0.6875rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap', textAlign: hi === 0 || hi === 7 ? 'center' : 'left' }}>{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredStaff.map((row, i) => {
+                                                    const tdBase = { padding: '0.75rem 0.875rem', borderBottom: i < filteredStaff.length - 1 ? '1px solid #f1f5f9' : 'none', background: i % 2 === 0 ? 'white' : '#fafafa', verticalAlign: 'middle' }
+                                                    const roleColor = row.students?.role === 'leader' ? { bg: '#fdf0f0', text: '#7B1C1C' } : { bg: '#fefce8', text: '#854d0e' }
+                                                    return (
+                                                        <motion.tr key={row.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.015, 0.3) }}>
+                                                            <td style={{ ...tdBase, textAlign: 'center', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{i + 1}</td>
+                                                            <td style={{ ...tdBase, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>{row.students?.full_name}</td>
+                                                            <td style={tdBase}>
+                                                                <span style={{ background: roleColor.bg, color: roleColor.text, fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                                                                    {row.students?.role}
+                                                                </span>
+                                                            </td>
+                                                            <td style={tdBase}>
+                                                                <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap' }}>
+                                                                    {row.students?.team_name}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ ...tdBase, color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{fmtDate(row.time_in)}</td>
+                                                            <td style={{ ...tdBase, color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_in)}</td>
+                                                            <td style={{ ...tdBase, color: row.time_out ? '#0f172a' : '#cbd5e1', fontWeight: row.time_out ? 600 : 400, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_out)}</td>
+                                                            <td style={{ ...tdBase, textAlign: 'center' }}>
+                                                                <span style={{ display: 'inline-block', padding: '0.2rem 0.625rem', borderRadius: '99px', fontSize: '0.6875rem', fontWeight: 700, whiteSpace: 'nowrap', background: row.time_out ? '#f1f5f9' : '#dcfce7', color: row.time_out ? '#64748b' : '#16a34a', border: `1px solid ${row.time_out ? '#e2e8f0' : '#86efac'}` }}>
+                                                                    {row.time_out ? 'Done' : '● Present'}
+                                                                </span>
+                                                            </td>
+                                                        </motion.tr>
+                                                    )
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
 
                     {/* ── TEAMS TAB ───────────────────────────────────────── */}
                     {activeTab === 'teams' && (

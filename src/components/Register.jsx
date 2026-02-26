@@ -18,12 +18,25 @@ const RoleIcons = {
             <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /><path d="M9 14l2 2 4-4" />
         </svg>
     ),
+    executive: (color) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2l-3.5 10.5L2 12l6.5 3.5L8 22l4-3 4 3-.5-6.5L22 12l-6.5-.5L12 2z" />
+        </svg>
+    ),
+    bod: (color) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+        </svg>
+    ),
 }
 
 const ROLES = [
     { id: 'student', label: 'Student' },
     { id: 'leader', label: 'Leader' },
     { id: 'facilitator', label: 'Facilitator' },
+    { id: 'executive', label: 'Executive' },
+    { id: 'bod', label: 'BOD' },
 ]
 
 export default function Register({ onRegistered }) {
