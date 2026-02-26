@@ -2,12 +2,19 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 
+const ROLES = [
+    { id: 'student', label: 'Student', icon: '🎓', desc: 'Event participant' },
+    { id: 'leader', label: 'Leader', icon: '⭐', desc: 'Team leader' },
+    { id: 'facilitator', label: 'Facilitator', icon: '🎯', desc: 'Event facilitator' },
+]
+
 export default function Register({ onRegistered }) {
     const [fullName, setFullName] = useState('')
     const [username, setUsername] = useState('')
     const [password, setPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
     const [teamName, setTeamName] = useState('')
+    const [role, setRole] = useState('student')
     const [teams, setTeams] = useState([])
     const [loading, setLoading] = useState(false)
     const [teamsLoading, setTeamsLoading] = useState(true)
@@ -47,16 +54,13 @@ export default function Register({ onRegistered }) {
         try {
             if (!supabase) throw new Error('Supabase is not configured.')
 
-            // Check if username already exists
             const { data: existing } = await supabase
                 .from('students')
                 .select('id')
                 .eq('username', username.trim().toLowerCase())
                 .maybeSingle()
 
-            if (existing) {
-                throw new Error('Username is already taken. Please choose another.')
-            }
+            if (existing) throw new Error('Username is already taken. Please choose another.')
 
             const { data, error: dbError } = await supabase
                 .from('students')
@@ -65,6 +69,7 @@ export default function Register({ onRegistered }) {
                     username: username.trim().toLowerCase(),
                     password: password,
                     team_name: teamName,
+                    role: role,
                     edit_count: 0,
                 }])
                 .select('uuid')
@@ -84,8 +89,8 @@ export default function Register({ onRegistered }) {
     return (
         <>
             <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', top: '-8rem', right: '-8rem', width: '28rem', height: '28rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', bottom: '-8rem', left: '-8rem', width: '28rem', height: '28rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(6,182,212,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', top: '-8rem', right: '-8rem', width: '28rem', height: '28rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(123,28,28,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', bottom: '-8rem', left: '-8rem', width: '28rem', height: '28rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
                 <motion.div
                     initial={{ opacity: 0, y: 32 }}
@@ -95,19 +100,40 @@ export default function Register({ onRegistered }) {
                 >
                     {/* Logo */}
                     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-                        style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '4rem', height: '4rem', borderRadius: '1.125rem', background: 'linear-gradient(135deg, #6366f1, #06b6d4)', marginBottom: '1.25rem', boxShadow: '0 8px 24px -4px rgba(99,102,241,0.35)' }}>
-                            <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={1.75}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                            </svg>
+                        style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+                        {/* CICT Logo placeholder */}
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '4.5rem', height: '4.5rem', borderRadius: '50%', background: 'linear-gradient(135deg, #7B1C1C, #C9A84C)', marginBottom: '1rem', boxShadow: '0 8px 24px -4px rgba(123,28,28,0.35)', flexDirection: 'column', gap: '1px' }}>
+                            <span style={{ color: 'white', fontWeight: 900, fontSize: '1rem', letterSpacing: '0.05em', lineHeight: 1 }}>CICT</span>
+                            <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontSize: '0.5rem', letterSpacing: '0.08em' }}>ISUFST</span>
                         </div>
-                        <h1 className="gradient-text" style={{ fontSize: '1.875rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.4rem' }}>Create Account</h1>
-                        <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Register for IT Week Attendance</p>
+                        <h1 style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.3rem', background: 'linear-gradient(135deg, #7B1C1C, #C9A84C)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Create Account</h1>
+                        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Register for IT Week Attendance</p>
                     </motion.div>
 
                     {/* Card */}
                     <motion.form className="card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-                        onSubmit={handleSubmit} style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
+                        onSubmit={handleSubmit} style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
+
+                        {/* Role Selector */}
+                        <div>
+                            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Role</label>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                                {ROLES.map((r) => (
+                                    <button key={r.id} type="button" onClick={() => setRole(r.id)}
+                                        style={{
+                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem',
+                                            padding: '0.625rem 0.25rem', borderRadius: '0.75rem', cursor: 'pointer',
+                                            fontFamily: 'inherit', transition: 'all 0.15s',
+                                            border: `2px solid ${role === r.id ? '#7B1C1C' : '#e2e8f0'}`,
+                                            background: role === r.id ? '#fdf0f0' : 'white',
+                                        }}>
+                                        <span style={{ fontSize: '1.25rem' }}>{r.icon}</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: role === r.id ? '#7B1C1C' : '#374151' }}>{r.label}</span>
+                                        <span style={{ fontSize: '0.625rem', color: '#94a3b8', textAlign: 'center' }}>{r.desc}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
                         <div>
                             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Full Name</label>
@@ -162,9 +188,9 @@ export default function Register({ onRegistered }) {
                             </motion.div>
                         )}
 
-                        <motion.button type="submit" className="btn-primary" disabled={loading || teams.length === 0}
+                        <motion.button type="submit" disabled={loading || teams.length === 0}
                             whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }}
-                            style={{ padding: '1rem', fontSize: '1rem', marginTop: '0.25rem' }}>
+                            style={{ padding: '1rem', fontSize: '1rem', marginTop: '0.25rem', background: 'linear-gradient(135deg, #7B1C1C, #a02424)', color: 'white', border: 'none', borderRadius: '0.75rem', fontWeight: 700, cursor: loading || teams.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', opacity: loading || teams.length === 0 ? 0.7 : 1 }}>
                             {loading ? (
                                 <><svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" opacity="0.3" /><path fill="white" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Creating account…</>
                             ) : (
@@ -173,11 +199,10 @@ export default function Register({ onRegistered }) {
                         </motion.button>
                     </motion.form>
 
-                    {/* Switch to login */}
                     <p style={{ textAlign: 'center', fontSize: '0.875rem', color: '#64748b', marginTop: '1.25rem' }}>
                         Already have an account?{' '}
                         <button onClick={() => onRegistered(null, 'login')}
-                            style={{ color: '#6366f1', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>
+                            style={{ color: '#7B1C1C', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>
                             Sign in
                         </button>
                     </p>

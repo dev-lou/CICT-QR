@@ -18,11 +18,17 @@ export default function AdminScanner({ onLogout }) {
     // Modal alert state (replaces inline result card)
     const [scanModal, setScanModal] = useState(null) // { type, name, message }
 
-    // Logbook state
+    // Student Logbook state
     const [logbook, setLogbook] = useState([])
     const [logLoading, setLogLoading] = useState(false)
     const [logFilter, setLogFilter] = useState('all') // 'all' | 'in' | 'out'
-    const [dayFilter, setDayFilter] = useState('all') // 'all' | 'YYYY-MM-DD'
+    const [dayFilter, setDayFilter] = useState('all')
+
+    // Staff Logbook state (leaders + facilitators)
+    const [staffLogbook, setStaffLogbook] = useState([])
+    const [staffLogLoading, setStaffLogLoading] = useState(false)
+    const [staffLogFilter, setStaffLogFilter] = useState('all')
+    const [staffDayFilter, setStaffDayFilter] = useState('all')
 
     // Teams state
     const [teams, setTeams] = useState([])
@@ -41,19 +47,18 @@ export default function AdminScanner({ onLogout }) {
         processingRef.current = false  // allow next scan only after admin dismisses
     }
 
-    // ─── Logbook ────────────────────────────────────────────────────────────────
+    // ─── Student Logbook ─────────────────────────────────────────────────────────
     const fetchLogbook = useCallback(async () => {
         if (!supabase) return
         setLogLoading(true)
         try {
             const { data, error } = await supabase
                 .from('logbook')
-                .select('id, time_in, time_out, students(full_name, team_name, uuid)')
+                .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
                 .order('time_in', { ascending: false })
                 .limit(100)
             if (error) throw error
             setLogbook(data || [])
-            // Update scan count (number of time-ins today)
             const today = new Date().toISOString().slice(0, 10)
             const todayScans = (data || []).filter((r) => r.time_in?.slice(0, 10) === today)
             setScanCount(todayScans.length)
@@ -64,7 +69,6 @@ export default function AdminScanner({ onLogout }) {
         }
     }, [])
 
-    // Realtime subscription to logbook
     useEffect(() => {
         fetchLogbook()
         if (!supabase) return
@@ -76,6 +80,37 @@ export default function AdminScanner({ onLogout }) {
             .subscribe()
         return () => { supabase.removeChannel(channel) }
     }, [fetchLogbook])
+
+    // ─── Staff Logbook ───────────────────────────────────────────────────────────
+    const fetchStaffLogbook = useCallback(async () => {
+        if (!supabase) return
+        setStaffLogLoading(true)
+        try {
+            const { data, error } = await supabase
+                .from('staff_logbook')
+                .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
+                .order('time_in', { ascending: false })
+                .limit(100)
+            if (error) throw error
+            setStaffLogbook(data || [])
+        } catch (err) {
+            console.error('Failed to load staff logbook:', err)
+        } finally {
+            setStaffLogLoading(false)
+        }
+    }, [])
+
+    useEffect(() => {
+        fetchStaffLogbook()
+        if (!supabase) return
+        const channel = supabase
+            .channel('staff-logbook-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_logbook' }, () => {
+                fetchStaffLogbook()
+            })
+            .subscribe()
+        return () => { supabase.removeChannel(channel) }
+    }, [fetchStaffLogbook])
 
     // ─── Score Logs ──────────────────────────────────────────────────────────────
     const fetchScoreLogs = useCallback(async () => {
@@ -134,50 +169,54 @@ export default function AdminScanner({ onLogout }) {
     // ─── Scanner ─────────────────────────────────────────────────────────────────
     const handleScan = useCallback(async (decodedText) => {
         if (processingRef.current) return
-        processingRef.current = true  // stays true until admin dismisses modal
+        processingRef.current = true
         const scannedUuid = decodedText.trim()
         try {
             const { data: student, error: studentErr } = await supabase
-                .from('students').select('id, full_name, uuid').eq('uuid', scannedUuid).single()
+                .from('students').select('id, full_name, uuid, role').eq('uuid', scannedUuid).single()
             if (studentErr || !student) {
                 setScanModal({ type: 'error', name: '', message: 'Student not found.' })
                 return
             }
+
+            // Route to correct logbook table based on role
+            const isStaff = student.role === 'leader' || student.role === 'facilitator'
+            const table = isStaff ? 'staff_logbook' : 'logbook'
+            const roleLabel = student.role === 'leader' ? '⭐ Leader' : student.role === 'facilitator' ? '🎯 Facilitator' : '🎓 Student'
+
             if (mode === 'time-in') {
                 const { data: existing } = await supabase
-                    .from('logbook').select('id').eq('student_id', student.id).is('time_out', null).limit(1)
+                    .from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
                 if (existing && existing.length > 0) {
-                    setScanModal({ type: 'warning', name: student.full_name, message: 'Already checked in! Please use Time-Out mode.' })
+                    setScanModal({ type: 'warning', name: student.full_name, message: `Already checked in! (${roleLabel}) Please use Time-Out mode.` })
                     return
                 }
-                const { error: insertErr } = await supabase.from('logbook').insert([{ student_id: student.id }])
+                const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
                 if (insertErr) throw insertErr
-                setScanModal({ type: 'success', name: student.full_name, message: 'Successfully Checked In!' })
+                setScanModal({ type: 'success', name: student.full_name, message: `✅ Checked In! (${roleLabel})` })
             } else {
                 const { data: openEntry, error: findErr } = await supabase
-                    .from('logbook').select('id').eq('student_id', student.id).is('time_out', null)
+                    .from(table).select('id').eq('student_id', student.id).is('time_out', null)
                     .order('time_in', { ascending: false }).limit(1).single()
                 if (findErr || !openEntry) {
-                    // Check if they were already fully checked out
                     const { data: lastOut } = await supabase
-                        .from('logbook').select('id, time_out').eq('student_id', student.id)
+                        .from(table).select('id, time_out').eq('student_id', student.id)
                         .not('time_out', 'is', null).order('time_out', { ascending: false }).limit(1)
                     if (lastOut && lastOut.length > 0) {
                         setScanModal({ type: 'warning', name: student.full_name, message: 'Already checked out! No active check-in found.' })
                     } else {
-                        setScanModal({ type: 'error', name: student.full_name, message: 'No active check-in found for this student.' })
+                        setScanModal({ type: 'error', name: student.full_name, message: 'No active check-in found for this person.' })
                     }
                     return
                 }
                 const { error: updateErr } = await supabase
-                    .from('logbook').update({ time_out: new Date().toISOString() }).eq('id', openEntry.id)
+                    .from(table).update({ time_out: new Date().toISOString() }).eq('id', openEntry.id)
                 if (updateErr) throw updateErr
-                setScanModal({ type: 'info', name: student.full_name, message: 'Successfully Checked Out!' })
+                setScanModal({ type: 'info', name: student.full_name, message: `👋 Checked Out! (${roleLabel})` })
             }
         } catch (err) {
             setScanModal({ type: 'error', name: '', message: err.message || 'An error occurred.' })
         }
-        // NOTE: processingRef.current is NOT reset here — it resets on modal dismiss
     }, [mode])
 
     const startScanner = useCallback(async () => {
@@ -392,10 +431,26 @@ export default function AdminScanner({ onLogout }) {
             <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1rem 1rem 0' }}>
                 <div className="tab-nav">
                     {[
-                        { id: 'scanner', icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" /></svg>, label: 'Scanner' },
-                        { id: 'logbook', icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>, label: 'Logbook' },
-                        { id: 'teams', icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>, label: 'Teams' },
-                        { id: 'scores', icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><polyline points="8 6 12 2 16 6" /><line x1="12" y1="2" x2="12" y2="15" /><path d="M20 15H4a2 2 0 000 4h16a2 2 0 000-4z" /></svg>, label: 'Scores' },
+                        {
+                            id: 'scanner', label: 'Scanner',
+                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" /></svg>
+                        },
+                        {
+                            id: 'logbook', label: 'Students',
+                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
+                        },
+                        {
+                            id: 'staff', label: 'Staff',
+                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
+                        },
+                        {
+                            id: 'teams', label: 'Teams',
+                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
+                        },
+                        {
+                            id: 'scores', label: 'Scores',
+                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><polyline points="8 6 12 2 16 6" /><line x1="12" y1="2" x2="12" y2="15" /><path d="M20 15H4a2 2 0 000 4h16a2 2 0 000-4z" /></svg>
+                        },
                     ].map((tab) => (
                         <button key={tab.id} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}
                             style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
@@ -633,6 +688,119 @@ export default function AdminScanner({ onLogout }) {
                             </div>
                         </motion.div>
                     )}
+
+                    {/* ── STAFF LOGBOOK TAB ────────────────────────────────── */}
+                    {activeTab === 'staff' && (() => {
+                        const staffEventDays = [...new Set(staffLogbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
+                        const filteredStaff = staffLogbook.filter((r) => {
+                            if (staffDayFilter !== 'all' && dayKey(r.time_in) !== staffDayFilter) return false
+                            if (staffLogFilter === 'in') return !r.time_out
+                            if (staffLogFilter === 'out') return !!r.time_out
+                            return true
+                        })
+                        return (
+                            <motion.div key="staff" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                                style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+                                {/* Stats */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
+                                    {[
+                                        { label: 'Total', value: filteredStaff.length, color: '#7B1C1C' },
+                                        { label: 'Present', value: filteredStaff.filter(r => !r.time_out).length, color: '#16a34a' },
+                                        { label: 'Done', value: filteredStaff.filter(r => !!r.time_out).length, color: '#64748b' },
+                                    ].map((s) => (
+                                        <div key={s.label} className="card" style={{ padding: '1rem 0.5rem', textAlign: 'center' }}>
+                                            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, letterSpacing: '-0.03em', lineHeight: 1 }}>{s.value}</p>
+                                            <p style={{ fontSize: '0.625rem', color: '#94a3b8', marginTop: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Filters */}
+                                <div className="card" style={{ padding: '1rem' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                                            {[{ id: 'all', label: 'All' }, { id: 'in', label: '🟢 Present' }, { id: 'out', label: '⚪ Done' }].map((f) => (
+                                                <button key={f.id} onClick={() => setStaffLogFilter(f.id)}
+                                                    style={{ padding: '0.35rem 0.75rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none', minHeight: '34px', background: staffLogFilter === f.id ? '#7B1C1C' : '#f1f5f9', color: staffLogFilter === f.id ? 'white' : '#64748b' }}>
+                                                    {f.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            {staffEventDays.map((d) => (
+                                                <button key={d} onClick={() => setStaffDayFilter(d === staffDayFilter ? 'all' : d)}
+                                                    style={{ padding: '0.35rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', borderColor: staffDayFilter === d ? '#7B1C1C' : '#e2e8f0', background: staffDayFilter === d ? '#fdf0f0' : 'white', color: staffDayFilter === d ? '#7B1C1C' : '#64748b' }}>
+                                                    {fmtDate(d + 'T00:00:00')}
+                                                </button>
+                                            ))}
+                                            <button onClick={fetchStaffLogbook}
+                                                style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                                Refresh
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Table */}
+                                <div className="card" style={{ overflow: 'hidden' }}>
+                                    {staffLogLoading ? (
+                                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                                            <p style={{ fontSize: '0.875rem' }}>Loading staff logbook…</p>
+                                        </div>
+                                    ) : filteredStaff.length === 0 ? (
+                                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                                            <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.25rem' }}>No staff records yet</p>
+                                            <p style={{ fontSize: '0.8125rem' }}>Scan leader or facilitator QR codes to populate this log</p>
+                                        </div>
+                                    ) : (
+                                        <div style={{ overflowX: 'auto' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                                                <thead>
+                                                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                                        {['#', 'Name', 'Role', 'Team', 'Date', 'Time In', 'Time Out', 'Status'].map((h, hi) => (
+                                                            <th key={h} style={{ padding: '0.625rem 0.875rem', fontSize: '0.6875rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap', textAlign: hi === 0 || hi === 7 ? 'center' : 'left' }}>{h}</th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {filteredStaff.map((row, i) => {
+                                                        const tdBase = { padding: '0.75rem 0.875rem', borderBottom: i < filteredStaff.length - 1 ? '1px solid #f1f5f9' : 'none', background: i % 2 === 0 ? 'white' : '#fafafa', verticalAlign: 'middle' }
+                                                        const roleColor = row.students?.role === 'leader' ? { bg: '#fdf0f0', text: '#7B1C1C' } : { bg: '#fefce8', text: '#854d0e' }
+                                                        return (
+                                                            <motion.tr key={row.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.015, 0.3) }}>
+                                                                <td style={{ ...tdBase, textAlign: 'center', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{i + 1}</td>
+                                                                <td style={{ ...tdBase, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>{row.students?.full_name}</td>
+                                                                <td style={tdBase}>
+                                                                    <span style={{ background: roleColor.bg, color: roleColor.text, fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                                                                        {row.students?.role}
+                                                                    </span>
+                                                                </td>
+                                                                <td style={tdBase}>
+                                                                    <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap' }}>
+                                                                        {row.students?.team_name}
+                                                                    </span>
+                                                                </td>
+                                                                <td style={{ ...tdBase, color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{fmtDate(row.time_in)}</td>
+                                                                <td style={{ ...tdBase, color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_in)}</td>
+                                                                <td style={{ ...tdBase, color: row.time_out ? '#0f172a' : '#cbd5e1', fontWeight: row.time_out ? 600 : 400, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_out)}</td>
+                                                                <td style={{ ...tdBase, textAlign: 'center' }}>
+                                                                    <span style={{ display: 'inline-block', padding: '0.2rem 0.625rem', borderRadius: '99px', fontSize: '0.6875rem', fontWeight: 700, whiteSpace: 'nowrap', background: row.time_out ? '#f1f5f9' : '#dcfce7', color: row.time_out ? '#64748b' : '#16a34a', border: `1px solid ${row.time_out ? '#e2e8f0' : '#86efac'}` }}>
+                                                                        {row.time_out ? 'Done' : '● Present'}
+                                                                    </span>
+                                                                </td>
+                                                            </motion.tr>
+                                                        )
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )
+                    })()}
 
                     {/* ── TEAMS TAB ───────────────────────────────────────── */}
                     {activeTab === 'teams' && (

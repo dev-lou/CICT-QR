@@ -138,6 +138,25 @@ export default function Scoreboard() {
         return () => { supabase.removeChannel(ch); clearInterval(poll) }
     }, [fetchTeams])
 
+    // Persist toggle state to DB so public /scoreboard stays in sync
+    useEffect(() => {
+        if (!supabase) return
+        const t = setTimeout(() => {
+            supabase.from('scoreboard_settings').upsert({
+                id: 1,
+                hide_names: hideNames,
+                hide_scores: hideScores,
+                hide_bars: hideBars,
+                hide_top2: hideTop2,
+                hide_all: hideAll,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'id' }).then(({ error }) => {
+                if (error) console.warn('Failed to save scoreboard settings:', error.message)
+            })
+        }, 300)
+        return () => clearTimeout(t)
+    }, [hideNames, hideScores, hideBars, hideTop2, hideAll])
+
     useEffect(() => {
         const html = document.documentElement, body = document.body
         const prev = { hO: html.style.overflow, hH: html.style.height, bO: body.style.overflow, bH: body.style.height, bS: body.style.overscrollBehaviorY }
