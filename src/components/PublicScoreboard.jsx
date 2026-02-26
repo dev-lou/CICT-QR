@@ -85,10 +85,10 @@ export default function PublicScoreboard() {
                             🔒 Scoreboard is currently hidden
                         </motion.div>
                     ) : sorted.map((team, index) => {
-                        if (hide_top2 && index < 2) return null
                         const score = team.score ?? 0
                         const pct = Math.max(4, (score / maxScore) * 100)
                         const isTop = index === 0
+                        const isHiddenTop = hide_top2 && index < 2
                         const medals = ['🥇', '🥈', '🥉']
 
                         return (
@@ -97,19 +97,19 @@ export default function PublicScoreboard() {
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.06, duration: 0.4 }}
                                 style={{
-                                    background: isTop
+                                    background: isTop && !isHiddenTop
                                         ? 'linear-gradient(135deg, rgba(201,168,76,0.15) 0%, rgba(123,28,28,0.1) 100%)'
                                         : 'rgba(255,255,255,0.04)',
-                                    border: `1.5px solid ${isTop ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                                    border: `1.5px solid ${isTop && !isHiddenTop ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.07)'}`,
                                     borderRadius: '1rem',
                                     padding: '1rem 1.25rem',
                                 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: hide_bars ? 0 : '0.625rem' }}>
-                                    <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{medals[index] ?? `#${index + 1}`}</span>
-                                    <span style={{ flex: 1, fontWeight: 700, fontSize: '1rem', color: hide_names ? 'transparent' : isTop ? '#f0d080' : 'white', textShadow: hide_names ? 'none' : undefined, userSelect: hide_names ? 'none' : undefined, filter: hide_names ? 'blur(6px)' : 'none', transition: 'filter 0.3s' }}>
+                                    <span style={{ fontSize: '1.25rem', flexShrink: 0, filter: isHiddenTop ? 'blur(4px)' : 'none', transition: 'filter 0.3s' }}>{medals[index] ?? `#${index + 1}`}</span>
+                                    <span style={{ flex: 1, fontWeight: 700, fontSize: '1rem', color: (hide_names || isHiddenTop) ? 'transparent' : isTop ? '#f0d080' : 'white', filter: (hide_names || isHiddenTop) ? 'blur(6px)' : 'none', transition: 'filter 0.3s', userSelect: (hide_names || isHiddenTop) ? 'none' : undefined }}>
                                         {team.name}
                                     </span>
-                                    <span style={{ fontWeight: 900, fontSize: '1.25rem', color: hide_scores ? 'transparent' : isTop ? '#C9A84C' : '#94a3b8', filter: hide_scores ? 'blur(8px)' : 'none', transition: 'filter 0.3s', fontVariantNumeric: 'tabular-nums' }}>
+                                    <span style={{ fontWeight: 900, fontSize: '1.25rem', color: (hide_scores || isHiddenTop) ? 'transparent' : isTop ? '#C9A84C' : '#94a3b8', filter: (hide_scores || isHiddenTop) ? 'blur(8px)' : 'none', transition: 'filter 0.3s', fontVariantNumeric: 'tabular-nums' }}>
                                         {score}
                                     </span>
                                 </div>
