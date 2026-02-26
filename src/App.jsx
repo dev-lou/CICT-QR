@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard'
 import LogbookPage from './components/LogbookPage'
 import AdminLogin from './components/AdminLogin'
 import AdminScanner from './components/AdminScanner'
+import AdminManageData from './components/AdminManageData'
 import Scoreboard from './components/Scoreboard'
 import ScoreHistory from './components/ScoreHistory'
 import PublicScoreboard from './components/PublicScoreboard'
@@ -37,11 +38,15 @@ function StudentRoot() {
     return <Dashboard uuid={uuid} />
 }
 
+import AdminAuditLog from './components/AdminAuditLog'
+import AdminPointTally from './components/AdminPointTally'
+
 // ─── Admin Auth Guard ─────────────────────────────────────────────────────────
 function AdminRoot() {
     const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(
         () => sessionStorage.getItem('admin_logged_in') === 'true'
     )
+    const [view, setView] = useState('scanner') // 'scanner' | 'manage' | 'audit' | 'tally'
 
     if (!isAdminLoggedIn) {
         return (
@@ -54,14 +59,56 @@ function AdminRoot() {
         )
     }
 
-    return (
-        <AdminScanner
-            onLogout={() => {
-                sessionStorage.removeItem('admin_logged_in')
-                setIsAdminLoggedIn(false)
-            }}
-        />
-    )
+    const logout = () => {
+        sessionStorage.removeItem('admin_logged_in')
+        setIsAdminLoggedIn(false)
+    }
+
+    if (view === 'scanner') {
+        return (
+            <AdminScanner
+                onLogout={logout}
+                onNavigateManageData={() => setView('manage')}
+                onNavigateAudit={() => setView('audit')}
+                onNavigateTally={() => setView('tally')}
+            />
+        )
+    }
+
+    if (view === 'manage') {
+        return (
+            <AdminManageData
+                onLogout={logout}
+                onNavigateScanner={() => setView('scanner')}
+                onNavigateAudit={() => setView('audit')}
+                onNavigateTally={() => setView('tally')}
+            />
+        )
+    }
+
+    if (view === 'audit') {
+        return (
+            <AdminAuditLog
+                onLogout={logout}
+                onNavigateScanner={() => setView('scanner')}
+                onNavigateManageData={() => setView('manage')}
+                onNavigateTally={() => setView('tally')}
+            />
+        )
+    }
+
+    if (view === 'tally') {
+        return (
+            <AdminPointTally
+                onLogout={logout}
+                onNavigateScanner={() => setView('scanner')}
+                onNavigateManageData={() => setView('manage')}
+                onNavigateAudit={() => setView('audit')}
+            />
+        )
+    }
+
+    return null
 }
 
 // ─── Logbook Page Guard ───────────────────────────────────────────────────────

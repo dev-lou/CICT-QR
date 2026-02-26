@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
+import CustomDropdown from './CustomDropdown'
 
 const RoleIcons = {
     student: (color) => (
@@ -23,7 +24,7 @@ const RoleIcons = {
             <path d="M12 2l-3.5 10.5L2 12l6.5 3.5L8 22l4-3 4 3-.5-6.5L22 12l-6.5-.5L12 2z" />
         </svg>
     ),
-    bod: (color) => (
+    officer: (color) => (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
             <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
@@ -36,7 +37,7 @@ const ROLES = [
     { id: 'leader', label: 'Leader' },
     { id: 'facilitator', label: 'Facilitator' },
     { id: 'executive', label: 'Executive' },
-    { id: 'bod', label: 'BOD' },
+    { id: 'officer', label: 'Officer' },
 ]
 
 export default function Register({ onRegistered }) {
@@ -46,6 +47,7 @@ export default function Register({ onRegistered }) {
     const [showPassword, setShowPassword] = useState(false)
     const [teamName, setTeamName] = useState('')
     const [role, setRole] = useState('student')
+    const [showMoreRoles, setShowMoreRoles] = useState(false)
     const [teams, setTeams] = useState([])
     const [loading, setLoading] = useState(false)
     const [teamsLoading, setTeamsLoading] = useState(true)
@@ -69,7 +71,8 @@ export default function Register({ onRegistered }) {
     const handleSubmit = async (e) => {
         e.preventDefault()
         setError('')
-        if (!fullName.trim() || !username.trim() || !password || !teamName) {
+        const isStaff = role === 'executive' || role === 'officer'
+        if (!fullName.trim() || !username.trim() || !password || (!isStaff && !teamName)) {
             setError('Please fill in all fields.')
             return
         }
@@ -99,7 +102,7 @@ export default function Register({ onRegistered }) {
                     full_name: fullName.trim(),
                     username: username.trim().toLowerCase(),
                     password: password,
-                    team_name: teamName,
+                    team_name: (role === 'executive' || role === 'officer') ? '' : teamName,
                     role: role,
                     edit_count: 0,
                 }])
@@ -116,6 +119,11 @@ export default function Register({ onRegistered }) {
             setLoading(false)
         }
     }
+
+    // Role filtering logic based on toggle state
+    // Display index 0,1,2 (Student, Leader, Facilitator) if !showMoreRoles
+    // Display index 3,4 (Executive, Officer) if showMoreRoles
+    const visibleRoles = showMoreRoles ? ROLES.slice(3) : ROLES.slice(0, 3)
 
     return (
         <>
@@ -143,9 +151,27 @@ export default function Register({ onRegistered }) {
 
                         {/* Role Selector */}
                         <div>
-                            <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>Role</label>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.375rem' }}>
-                                {ROLES.map((r) => (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
+                                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>Role</label>
+                                <button type="button" onClick={() => {
+                                    setShowMoreRoles(!showMoreRoles)
+                                    // Reset role selection if toggling away from the current selection's group
+                                    if (!showMoreRoles && (role === 'student' || role === 'leader' || role === 'facilitator')) {
+                                        setRole('officer') // Default to something in the new view
+                                    } else if (showMoreRoles && (role === 'executive' || role === 'officer')) {
+                                        setRole('student') // Default back
+                                    }
+                                }}
+                                    style={{ background: 'none', border: 'none', color: '#7B1C1C', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                    </svg>
+                                    {showMoreRoles ? 'Regular Roles' : 'Admin Roles'}
+                                </button>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleRoles.length}, 1fr)`, gap: '0.375rem' }}>
+                                {visibleRoles.map((r) => (
                                     <button key={r.id} type="button" onClick={() => setRole(r.id)}
                                         style={{
                                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.125rem',
@@ -186,26 +212,30 @@ export default function Register({ onRegistered }) {
                             </div>
                         </div>
 
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Team</label>
-                            {teamsLoading ? (
-                                <div className="input" style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <svg className="animate-spin" width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" fill="none" /><path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                    Loading teams…
-                                </div>
-                            ) : teams.length === 0 ? (
-                                <div className="alert alert-warning">
-                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ flexShrink: 0 }}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                    No teams yet. Ask an admin to add teams first.
-                                </div>
-                            ) : (
-                                <select className="input" value={teamName} onChange={(e) => setTeamName(e.target.value)}
-                                    style={{ appearance: 'none', cursor: 'pointer', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cpath fill='%2394a3b8' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center' }}>
-                                    <option value="" disabled>Select your team</option>
-                                    {teams.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
-                                </select>
-                            )}
-                        </div>
+                        {role !== 'executive' && role !== 'officer' && (
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Team</label>
+                                {teamsLoading ? (
+                                    <div className="input" style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <svg className="animate-spin" width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" fill="none" /><path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                        Loading teams…
+                                    </div>
+                                ) : teams.length === 0 ? (
+                                    <div className="alert alert-warning">
+                                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ flexShrink: 0 }}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                        No teams yet. Ask an admin to add teams first.
+                                    </div>
+                                ) : (
+                                    <CustomDropdown
+                                        label="Team"
+                                        value={teamName}
+                                        options={teams}
+                                        onChange={setTeamName}
+                                        placeholder="Select your team"
+                                    />
+                                )}
+                            </div>
+                        )}
 
                         {error && (
                             <motion.div className="alert alert-danger" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>

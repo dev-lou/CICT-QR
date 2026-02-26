@@ -26,13 +26,23 @@ export default function LogbookPage({ uuid }) {
             const role = me.role || 'student'
             setMyRole(role)
 
-            if (role === 'leader' || role === 'facilitator') {
+            if (role === 'leader' || role === 'facilitator' || role === 'executive' || role === 'officer') {
                 // Staff see the staff_logbook
-                const { data: logs } = await supabase
-                    .from('staff_logbook')
-                    .select('id, time_in, time_out, event, students(id, full_name, team_name, role)')
-                    .order('time_in', { ascending: false })
-                setLogbook(logs || [])
+                try {
+                    const { data, error } = await supabase
+                        .from('staff_logbook')
+                        .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
+                        .order('time_in', { ascending: false })
+                        .limit(100)
+                    if (error) {
+                        console.error('Staff Logbook fetch error:', error)
+                        throw error
+                    }
+                    setLogbook(data || []) // Assuming setLogbook is used for both staff and student data
+                } catch (err) {
+                    console.error('Error fetching staff logbook:', err)
+                    setLogbook([]) // Clear logbook on error
+                }
             } else {
                 // Students see the regular logbook
                 const { data: logs } = await supabase
@@ -125,7 +135,7 @@ export default function LogbookPage({ uuid }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontWeight: 800, fontSize: '0.9375rem', color: '#0f172a', lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
-                            {myRole === 'leader' || myRole === 'facilitator' ? 'Staff Logbook' : 'Attendance Logbook'}
+                            {myRole === 'leader' || myRole === 'facilitator' || myRole === 'executive' || myRole === 'officer' ? 'Staff Logbook' : 'Attendance Logbook'}
                         </p>
                         {myStudent && (
                             <p style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>
@@ -199,6 +209,7 @@ export default function LogbookPage({ uuid }) {
                                 <tr>
                                     <th style={{ ...thStyle, width: '2.5rem', textAlign: 'center' }}>#</th>
                                     <th style={thStyle}>Name</th>
+                                    <th style={thStyle}>Role</th>
                                     <th style={thStyle}>Team</th>
                                     <th style={thStyle}>Date</th>
                                     <th style={thStyle}>Time In</th>
@@ -210,7 +221,7 @@ export default function LogbookPage({ uuid }) {
                             <tbody>
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem' }}>
+                                        <td colSpan={9} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem' }}>
                                             No records found
                                         </td>
                                     </tr>
@@ -245,9 +256,22 @@ export default function LogbookPage({ uuid }) {
                                                 </div>
                                             </td>
                                             <td style={tdBase}>
-                                                <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap' }}>
-                                                    {row.students?.team_name}
+                                                <span style={{
+                                                    background: row.students?.role === 'leader' ? '#fdf0f0' : row.students?.role === 'facilitator' ? '#fefce8' : row.students?.role === 'executive' ? '#ecfdf5' : row.students?.role === 'officer' ? '#eff6ff' : '#f1f5f9',
+                                                    color: row.students?.role === 'leader' ? '#7B1C1C' : row.students?.role === 'facilitator' ? '#854d0e' : row.students?.role === 'executive' ? '#059669' : row.students?.role === 'officer' ? '#2563eb' : '#475569',
+                                                    fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap', textTransform: 'capitalize'
+                                                }}>
+                                                    {row.students?.role || 'student'}
                                                 </span>
+                                            </td>
+                                            <td style={tdBase}>
+                                                {(row.students?.role === 'executive' || row.students?.role === 'officer') ? (
+                                                    <span style={{ color: '#cbd5e1' }}>—</span>
+                                                ) : (
+                                                    <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap' }}>
+                                                        {row.students?.team_name}
+                                                    </span>
+                                                )}
                                             </td>
                                             <td style={{ ...tdBase, color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{fmtDate(row.time_in)}</td>
                                             <td style={{ ...tdBase, color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_in)}</td>

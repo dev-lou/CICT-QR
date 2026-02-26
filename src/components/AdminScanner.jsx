@@ -7,8 +7,9 @@ import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-export default function AdminScanner({ onLogout }) {
+export default function AdminScanner({ onLogout, onNavigateManageData, onNavigateAudit, onNavigateTally }) {
     const [activeTab, setActiveTab] = useState('scanner')
+    const [menuOpen, setMenuOpen] = useState(false)
     const [mode, setMode] = useState('time-in')
     const [scanning, setScanning] = useState(false)
     const [scanCount, setScanCount] = useState(0)
@@ -47,24 +48,9 @@ export default function AdminScanner({ onLogout }) {
     const [staffLogFilter, setStaffLogFilter] = useState('all')
     const [staffDayFilter, setStaffDayFilter] = useState('all')
 
-    // Teams state
-    const [teams, setTeams] = useState([])
-    const [newTeamName, setNewTeamName] = useState('')
-    const [teamsLoading, setTeamsLoading] = useState(false)
-    const [teamError, setTeamError] = useState('')
-
-    // Scores state
-    const [scoreLog, setScoreLog] = useState([]) // loaded from Supabase score_logs
-    const [scoreReason, setScoreReason] = useState({})
-    const [scoreLoading, setScoreLoading] = useState(false)
-    const [submitting, setSubmitting] = useState(new Set()) // team IDs currently being saved
-
-    // Users CRUD state
+    // Minimal state for Logbook stats
     const [users, setUsers] = useState([])
-    const [usersLoading, setUsersLoading] = useState(false)
-    const [userSearch, setUserSearch] = useState('')
-    const [editingUser, setEditingUser] = useState(null) // ID of user being edited
-    const [editForm, setEditForm] = useState({})
+    const [teams, setTeams] = useState([])
 
     const dismissModal = () => {
         setScanModal(null)
@@ -115,10 +101,13 @@ export default function AdminScanner({ onLogout }) {
                 .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
                 .order('time_in', { ascending: false })
                 .limit(100)
-            if (error) throw error
+            if (error) {
+                console.error('Staff Logbook Fetch Error:', error)
+                throw error
+            }
             setStaffLogbook(data || [])
         } catch (err) {
-            console.error('Failed to load staff logbook:', err)
+            console.error('Failed to load staff logbook:', err.message)
         } finally {
             setStaffLogLoading(false)
         }
@@ -136,108 +125,25 @@ export default function AdminScanner({ onLogout }) {
         return () => { supabase.removeChannel(channel) }
     }, [fetchStaffLogbook])
 
-    // ─── Score Logs ──────────────────────────────────────────────────────────────
-    const fetchScoreLogs = useCallback(async () => {
+    const fetchStats = useCallback(async () => {
         if (!supabase) return
-        const { data } = await supabase
-            .from('score_logs')
-            .select('id, team_name, delta, reason, created_at')
-            .order('created_at', { ascending: false })
-            .limit(5)
-        if (data) setScoreLog(data)
-    }, [])
-
-    useEffect(() => { fetchScoreLogs() }, [fetchScoreLogs])
-
-    // ─── Teams ──────────────────────────────────────────────────────────────────
-    const fetchTeams = useCallback(async () => {
-        if (!supabase) return
-        setTeamsLoading(true)
-        try {
-            // Fetch teams and student counts in parallel
-            const [{ data: teamsData }, { data: studentsData }] = await Promise.all([
-                supabase.from('teams').select('*').order('name'),
-                supabase.from('students').select('id, team_name'),
-            ])
-            // Annotate each team with member count
-            const withCounts = (teamsData || []).map((t) => ({
-                ...t,
-                member_count: (studentsData || []).filter((s) => s.team_name === t.name).length,
-            }))
-            setTeams(withCounts)
-        } finally { setTeamsLoading(false) }
-    }, [])
-
-    useEffect(() => { fetchTeams() }, [fetchTeams])
-
-    const addTeam = async () => {
-        if (!newTeamName.trim() || !supabase) return
-        setTeamError('')
-        try {
-            const { error } = await supabase.from('teams').insert([{ name: newTeamName.trim() }])
-            if (error) throw error
-            setNewTeamName('')
-            await fetchTeams()
-        } catch (err) { setTeamError(err.message || 'Failed to add team.') }
-    }
-
-    const deleteTeam = async (id) => {
-        if (!supabase || !confirm('Delete this team?')) return
-        try {
-            const { error } = await supabase.from('teams').delete().eq('id', id)
-            if (error) throw error
-            await fetchTeams()
-        } catch (err) { alert(err.message || 'Failed to delete team.') }
-    }
-
-    // ─── Users (CRUD) ────────────────────────────────────────────────────────────
-    const fetchUsers = useCallback(async () => {
-        if (!supabase) return
-        setUsersLoading(true)
-        try {
-            const { data, error } = await supabase.from('students').select('*').order('created_at', { ascending: false })
-            if (error) throw error
-            setUsers(data || [])
-        } catch (err) {
-            console.error('Failed to load users:', err)
-        } finally {
-            setUsersLoading(false)
-        }
+        const [{ data: ud }, { data: td }] = await Promise.all([
+            supabase.from('students').select('id'),
+            supabase.from('teams').select('id')
+        ])
+        setUsers(ud || [])
+        setTeams(td || [])
     }, [])
 
     useEffect(() => {
-        if (activeTab === 'users') fetchUsers()
-    }, [activeTab, fetchUsers])
-
-    const deleteUser = async (id, name) => {
-        if (!supabase || !confirm(`Are you sure you want to delete ${name}? This cannot be undone.`)) return
-        try {
-            const { error } = await supabase.from('students').delete().eq('id', id)
-            if (error) throw error
-            fetchUsers()
-            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'User deleted', showConfirmButton: false, timer: 2000 })
-        } catch (err) { alert(err.message || 'Failed to delete user.') }
-    }
-
-    const startEditUser = (user) => {
-        setEditingUser(user.id)
-        setEditForm({ full_name: user.full_name, role: user.role, team_name: user.team_name })
-    }
-
-    const saveEditUser = async (id) => {
+        fetchLogbook()
+        fetchStaffLogbook()
+        fetchStats()
         if (!supabase) return
-        try {
-            const { error } = await supabase.from('students').update({
-                full_name: editForm.full_name,
-                role: editForm.role,
-                team_name: editForm.team_name,
-            }).eq('id', id)
-            if (error) throw error
-            setEditingUser(null)
-            fetchUsers()
-            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'User updated', showConfirmButton: false, timer: 2000 })
-        } catch (err) { alert(err.message || 'Failed to update user.') }
-    }
+        const c1 = supabase.channel('logbook-update').on('postgres_changes', { event: '*', schema: 'public', table: 'logbook' }, () => fetchLogbook()).subscribe()
+        const c2 = supabase.channel('staff-update').on('postgres_changes', { event: '*', schema: 'public', table: 'staff_logbook' }, () => fetchStaffLogbook()).subscribe()
+        return () => { supabase.removeChannel(c1); supabase.removeChannel(c2); }
+    }, [fetchLogbook, fetchStaffLogbook, fetchStats])
 
     // ─── Scanner ─────────────────────────────────────────────────────────────────
     const handleScan = useCallback(async (decodedText) => {
@@ -253,9 +159,9 @@ export default function AdminScanner({ onLogout }) {
             }
 
             // Route to correct logbook table based on role
-            const isStaff = student.role === 'leader' || student.role === 'facilitator' || student.role === 'executive' || student.role === 'bod'
+            const isStaff = student.role === 'leader' || student.role === 'facilitator' || student.role === 'executive' || student.role === 'officer'
             const table = isStaff ? 'staff_logbook' : 'logbook'
-            const roleLabel = student.role === 'leader' ? '⭐ Leader' : student.role === 'facilitator' ? '🎯 Facilitator' : student.role === 'executive' ? '👔 Executive' : student.role === 'bod' ? '🏛️ BOD' : '🎓 Student'
+            const roleLabel = student.role === 'leader' ? '⭐ Leader' : student.role === 'facilitator' ? '🎯 Facilitator' : student.role === 'executive' ? '👔 Executive' : student.role === 'officer' ? '🏛️ Officer' : '🎓 Student'
 
             if (mode === 'time-in') {
                 const { data: existing } = await supabase
@@ -554,20 +460,80 @@ export default function AdminScanner({ onLogout }) {
                         </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
-                        <div style={{ textAlign: 'right' }}>
-                            <p style={{ fontSize: '1.25rem', fontWeight: 800, color: '#6366f1', lineHeight: 1 }}>{scanCount}</p>
-                            <p style={{ fontSize: '0.5625rem', color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Today</p>
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 900, color: '#6366f1', lineHeight: 1, letterSpacing: '-0.02em' }}>{scanCount}</p>
+                            <p style={{ fontSize: '0.625rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Scans</p>
                         </div>
-                        <button
-                            onClick={() => { stopScanner(); onLogout() }}
-                            style={{ padding: '0.5rem 0.75rem', borderRadius: '0.625rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: '44px' }}
-                        >Logout</button>
+                        {/* Burger Menu Button & Dropdown */}
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                onClick={() => setMenuOpen(!menuOpen)}
+                                style={{
+                                    padding: '0.5rem', borderRadius: '0.5rem', background: menuOpen ? '#f1f5f9' : 'transparent',
+                                    border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    transition: 'background 0.2s'
+                                }}>
+                                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#475569" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+
+                            <AnimatePresence>
+                                {menuOpen && (
+                                    <>
+                                        <div
+                                            style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+                                            onClick={() => setMenuOpen(false)}
+                                        />
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                            transition={{ duration: 0.15 }}
+                                            style={{
+                                                position: 'absolute', right: 0, top: 'calc(100% + 0.5rem)',
+                                                background: 'white', borderRadius: '0.75rem', padding: '0.5rem',
+                                                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                                                border: '1px solid #e2e8f0', minWidth: '180px', zIndex: 50
+                                            }}
+                                        >
+                                            <button onClick={() => { setMenuOpen(false); }}
+                                                style={{ width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', background: '#f8fafc', border: 'none', fontSize: '0.875rem', fontWeight: 600, color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><circle cx="12" cy="13" r="3" /></svg>
+                                                Scanner & Logs
+                                            </button>
+                                            <button onClick={() => { setMenuOpen(false); stopScanner(); onNavigateManageData && onNavigateManageData(); }}
+                                                style={{ width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', background: 'transparent', border: 'none', fontSize: '0.875rem', fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+                                                Manage Data
+                                            </button>
+                                            <button onClick={() => { setMenuOpen(false); stopScanner(); onNavigateAudit && onNavigateAudit(); }}
+                                                style={{ width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', background: 'transparent', border: 'none', fontSize: '0.875rem', fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                                Audit & Users
+                                            </button>
+                                            <button onClick={() => { setMenuOpen(false); stopScanner(); onNavigateTally && onNavigateTally(); }}
+                                                style={{ width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', background: 'transparent', border: 'none', fontSize: '0.875rem', fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                                                Point Tally
+                                            </button>
+                                            <div style={{ height: '1px', background: '#e2e8f0', margin: '0.5rem 0' }} />
+                                            <button onClick={() => { setMenuOpen(false); stopScanner(); onLogout(); }}
+                                                style={{ width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', background: 'transparent', border: 'none', fontSize: '0.875rem', fontWeight: 600, color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                                                Logout
+                                            </button>
+                                        </motion.div>
+                                    </>
+                                )}
+                            </AnimatePresence>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Tab Nav */}
-            <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1rem 1rem 0' }}>
+            {/* Tab Nav Container */}
+            <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1rem 1rem 0', display: 'flex', justifyContent: 'center' }}>
                 <div className="tab-nav">
                     {[
                         {
@@ -582,18 +548,6 @@ export default function AdminScanner({ onLogout }) {
                             id: 'staff', label: 'Staff',
                             icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
                         },
-                        {
-                            id: 'teams', label: 'Teams',
-                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
-                        },
-                        {
-                            id: 'scores', label: 'Scores',
-                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><polyline points="8 6 12 2 16 6" /><line x1="12" y1="2" x2="12" y2="15" /><path d="M20 15H4a2 2 0 000 4h16a2 2 0 000-4z" /></svg>
-                        },
-                        {
-                            id: 'users', label: 'Users',
-                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
-                        },
                     ].map((tab) => (
                         <button key={tab.id} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}
                             style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
@@ -604,7 +558,7 @@ export default function AdminScanner({ onLogout }) {
             </div>
 
             {/* Content */}
-            <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1.25rem 1.5rem 2rem' }}>
+            <div style={{ maxWidth: '56rem', margin: '0 auto', padding: '1rem 1rem 2.5rem' }}>
                 <AnimatePresence mode="wait">
 
                     {/* ── SCANNER TAB ─────────────────────────────────────── */}
@@ -620,9 +574,15 @@ export default function AdminScanner({ onLogout }) {
                                         <p style={{ color: '#64748b', fontSize: '0.8125rem' }}>{mode === 'time-in' ? 'Recording arrivals' : 'Recording departures'}</p>
                                     </div>
                                 </div>
-                                <div className="mode-toggle" style={{ width: '100%' }}>
-                                    <button className={`mode-toggle-btn ${mode === 'time-in' ? 'active' : ''}`} onClick={() => setMode('time-in')} style={{ minHeight: '44px' }}>⏰ Time In</button>
-                                    <button className={`mode-toggle-btn ${mode === 'time-out' ? 'active' : ''}`} onClick={() => setMode('time-out')} style={{ minHeight: '44px' }}>🚪 Time Out</button>
+                                <div className="mode-toggle" style={{ width: '100%', gap: '0.5rem', padding: '0.375rem' }}>
+                                    <button className={`mode-toggle-btn ${mode === 'time-in' ? 'active' : ''}`} onClick={() => setMode('time-in')} style={{ minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                                        <span style={{ fontSize: '1.1rem' }}>⏰</span>
+                                        <span>Time In</span>
+                                    </button>
+                                    <button className={`mode-toggle-btn ${mode === 'time-out' ? 'active' : ''}`} onClick={() => setMode('time-out')} style={{ minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                                        <span style={{ fontSize: '1.1rem' }}>🚪</span>
+                                        <span>Time Out</span>
+                                    </button>
                                 </div>
                             </div>
 
@@ -868,6 +828,31 @@ export default function AdminScanner({ onLogout }) {
                         <motion.div key="staff" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                             style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
+                            {/* Staff Day selector tabs */}
+                            {staffEventDays.length > 0 && (
+                                <div className="card" style={{ padding: '1rem' }}>
+                                    <p style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>Select Day</p>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <button onClick={() => setStaffDayFilter('all')}
+                                            style={{
+                                                padding: '0.4rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', minHeight: '36px',
+                                                borderColor: staffDayFilter === 'all' ? '#7B1C1C' : '#e2e8f0',
+                                                background: staffDayFilter === 'all' ? '#fdf0f0' : 'white',
+                                                color: staffDayFilter === 'all' ? '#7B1C1C' : '#64748b',
+                                            }}>📅 All Days</button>
+                                        {staffEventDays.map((d) => (
+                                            <button key={d} onClick={() => setStaffDayFilter(d)}
+                                                style={{
+                                                    padding: '0.4rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', minHeight: '36px',
+                                                    borderColor: staffDayFilter === d ? '#7B1C1C' : '#e2e8f0',
+                                                    background: staffDayFilter === d ? '#fdf0f0' : 'white',
+                                                    color: staffDayFilter === d ? '#7B1C1C' : '#64748b',
+                                                }}>{fmtDateFull(d + 'T00:00:00')}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Stats */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
                                 {[
@@ -920,7 +905,7 @@ export default function AdminScanner({ onLogout }) {
                                 ) : filteredStaff.length === 0 ? (
                                     <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
                                         <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.25rem' }}>No staff records yet</p>
-                                        <p style={{ fontSize: '0.8125rem' }}>Scan leader or facilitator QR codes to populate this log</p>
+                                        <p style={{ fontSize: '0.8125rem' }}>Scan staff QR codes (Leader, Facilitator, Executive, Officer) to populate this log</p>
                                     </div>
                                 ) : (
                                     <div style={{ overflowX: 'auto' }}>
@@ -935,7 +920,12 @@ export default function AdminScanner({ onLogout }) {
                                             <tbody>
                                                 {filteredStaff.map((row, i) => {
                                                     const tdBase = { padding: '0.75rem 0.875rem', borderBottom: i < filteredStaff.length - 1 ? '1px solid #f1f5f9' : 'none', background: i % 2 === 0 ? 'white' : '#fafafa', verticalAlign: 'middle' }
-                                                    const roleColor = row.students?.role === 'leader' ? { bg: '#fdf0f0', text: '#7B1C1C' } : { bg: '#fefce8', text: '#854d0e' }
+                                                    const roleColor =
+                                                        row.students?.role === 'leader' ? { bg: '#fdf0f0', text: '#7B1C1C' } :
+                                                            row.students?.role === 'facilitator' ? { bg: '#fefce8', text: '#854d0e' } :
+                                                                row.students?.role === 'executive' ? { bg: '#ecfdf5', text: '#059669' } :
+                                                                    row.students?.role === 'officer' ? { bg: '#eff6ff', text: '#2563eb' } :
+                                                                        { bg: '#f1f5f9', text: '#475569' }
                                                     return (
                                                         <motion.tr key={row.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.015, 0.3) }}>
                                                             <td style={{ ...tdBase, textAlign: 'center', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{i + 1}</td>
@@ -969,348 +959,7 @@ export default function AdminScanner({ onLogout }) {
                         </motion.div>
                     )}
 
-                    {/* ── TEAMS TAB ───────────────────────────────────────── */}
-                    {activeTab === 'teams' && (
-                        <motion.div key="teams" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                            style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                            <div className="card" style={{ padding: '1.5rem' }}>
-                                <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9375rem', marginBottom: '1rem' }}>Add New Team</p>
-                                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                    <input className="input" type="text" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="Team name…" onKeyDown={(e) => e.key === 'Enter' && addTeam()} style={{ flex: 1 }} />
-                                    <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={addTeam} disabled={!newTeamName.trim()}
-                                        style={{ padding: '0.875rem 1.5rem', borderRadius: '0.875rem', background: 'linear-gradient(135deg,#6366f1,#06b6d4)', color: 'white', fontWeight: 700, fontSize: '0.9375rem', border: 'none', cursor: 'pointer', fontFamily: 'inherit', opacity: newTeamName.trim() ? 1 : 0.4 }}>
-                                        Add
-                                    </motion.button>
-                                </div>
-                                {teamError && <p style={{ color: '#dc2626', fontSize: '0.8125rem', marginTop: '0.625rem' }}>{teamError}</p>}
-                            </div>
-
-                            <div className="card" style={{ padding: '1.5rem' }}>
-                                <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9375rem', marginBottom: '1rem' }}>
-                                    Teams <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '0.875rem' }}>({teams.length})</span>
-                                </p>
-                                {teamsLoading ? (
-                                    <p style={{ color: '#94a3b8', textAlign: 'center', padding: '2rem 0', fontSize: '0.875rem' }}>Loading…</p>
-                                ) : teams.length === 0 ? (
-                                    <p style={{ color: '#94a3b8', textAlign: 'center', padding: '2rem 0', fontSize: '0.875rem' }}>No teams yet. Add your first team above.</p>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                        {teams.map((team, i) => (
-                                            <div key={team.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1rem', background: '#f8fafc', borderRadius: '0.75rem', border: '1px solid #f1f5f9' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#06b6d4)', flexShrink: 0 }} />
-                                                    <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9375rem' }}>{team.name}</span>
-                                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', background: '#f1f5f9', borderRadius: '99px', padding: '0.125rem 0.5rem', fontWeight: 500 }}>
-                                                        {team.member_count} {team.member_count === 1 ? 'member' : 'members'}
-                                                    </span>
-                                                </div>
-                                                <button onClick={() => deleteTeam(team.id)}
-                                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#dc2626' }}
-                                                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#cbd5e1' }}
-                                                    style={{ padding: '0.375rem', borderRadius: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', color: '#cbd5e1', transition: 'all 0.15s' }}>
-                                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {/* ── SCORES TAB ──────────────────────────────────────────── */}
-                    {activeTab === 'scores' && (
-                        <motion.div key="scores" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                            style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-
-                            {/* Info card */}
-                            <div className="card" style={{ padding: '1rem 1.25rem', background: '#eef2ff', border: '1.5px solid #c7d2fe' }}>
-                                <p style={{ fontSize: '0.8125rem', color: '#4f46e5', fontWeight: 600 }}>
-                                    Teams start at <strong>150 pts</strong>. Type any points in the field, then click <strong>+ Merit</strong> to add or <strong>− Demerit</strong> to subtract (min 0).
-                                </p>
-                                <motion.button
-                                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                                    onClick={() => window.open('/scoreboard-itweek2026', '_blank')}
-                                    style={{ marginTop: '0.75rem', width: '100%', padding: '0.75rem', borderRadius: '0.75rem', background: 'linear-gradient(135deg,#6366f1,#06b6d4)', border: 'none', color: 'white', fontWeight: 700, fontSize: '0.9375rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                    Open Scoreboard (Full Screen)
-                                </motion.button>
-                                <motion.button
-                                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                                    onClick={() => window.open('/score-history', '_blank')}
-                                    style={{ marginTop: '0.5rem', width: '100%', padding: '0.625rem', borderRadius: '0.75rem', background: 'white', border: '1.5px solid #c7d2fe', color: '#4f46e5', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                                    View Full Score History
-                                </motion.button>
-                            </div>
-
-                            {/* Team score cards */}
-                            {scoreLoading ? (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem 0' }}>
-                                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                                        style={{ width: 28, height: 28, border: '3px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%' }} />
-                                </div>
-                            ) : (
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-                                    {[...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).map((team, idx) => {
-                                        const score = team.score ?? 150
-                                        const pts = parseInt(scoreReason[team.id + '_pts'] || '10', 10) || 10
-
-                                        const applyScore = async (delta) => {
-                                            if (!supabase || submitting.has(team.id)) return
-                                            setSubmitting(prev => new Set(prev).add(team.id))
-                                            try {
-                                                const newScore = Math.max(0, score + delta)
-                                                const reason = scoreReason[team.id] || ''
-                                                await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
-                                                await supabase.from('score_logs').insert({ team_id: team.id, team_name: team.name, delta, reason })
-                                                setScoreReason(prev => ({ ...prev, [team.id]: '', [team.id + '_pts']: '' }))
-                                                fetchTeams()
-                                                fetchScoreLogs()
-
-                                                const isMerit = delta > 0
-                                                Swal.fire({
-                                                    toast: true, position: 'top-end', icon: isMerit ? 'success' : 'error',
-                                                    title: `${isMerit ? 'Merit' : 'Demerit'} applied!`,
-                                                    html: `<strong>${team.name}</strong> &nbsp;<span style="color:${isMerit ? '#16a34a' : '#dc2626'};font-weight:700">${isMerit ? '+' : ''}${delta} pts</span>${reason ? `<br><span style="font-size:0.8em;color:#64748b">${reason}</span>` : ''}`,
-                                                    showConfirmButton: false, timer: 3000, timerProgressBar: true,
-                                                })
-                                            } finally {
-                                                setSubmitting(prev => { const s = new Set(prev); s.delete(team.id); return s })
-                                            }
-                                        }
-
-                                        const isBusy = submitting.has(team.id)
-
-                                        return (
-                                            <div key={team.id} style={{
-                                                background: 'white', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem',
-                                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', position: 'relative', overflow: 'hidden'
-                                            }}>
-                                                {/* Rank ribbon logic */}
-                                                {idx === 0 && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />}
-
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-                                                    <div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                                                            <span style={{
-                                                                background: idx === 0 ? '#fef3c7' : idx === 1 ? '#f1f5f9' : idx === 2 ? '#ffedd5' : '#f8fafc',
-                                                                color: idx === 0 ? '#d97706' : idx === 1 ? '#64748b' : idx === 2 ? '#c2410c' : '#94a3b8',
-                                                                fontSize: '0.6875rem', fontWeight: 800, padding: '0.125rem 0.5rem', borderRadius: '99px'
-                                                            }}>
-                                                                {idx === 0 ? '1ST PLACE' : idx === 1 ? '2ND PLACE' : idx === 2 ? '3RD PLACE' : `RANK ${idx + 1}`}
-                                                            </span>
-                                                        </div>
-                                                        <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 800, color: '#0f172a' }}>{team.name}</h3>
-                                                    </div>
-                                                    <div style={{ textAlign: 'right' }}>
-                                                        <span style={{ fontSize: '2rem', fontWeight: 900, color: '#6366f1', lineHeight: 1, letterSpacing: '-0.03em' }}>{score}</span>
-                                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', marginLeft: '0.25rem', textTransform: 'uppercase' }}>pts</span>
-                                                    </div>
-                                                </div>
-
-                                                <div style={{ background: '#f8fafc', borderRadius: '0.75rem', padding: '0.875rem', border: '1px solid #f1f5f9' }}>
-                                                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                                                        <input
-                                                            type="text"
-                                                            value={scoreReason[team.id] || ''}
-                                                            onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id]: e.target.value }))}
-                                                            placeholder="📝 Reason (optional)"
-                                                            style={{
-                                                                flex: 1, padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid #e2e8f0', fontSize: '0.875rem', outline: 'none', transition: 'border-color 0.2s'
-                                                            }}
-                                                            onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                                                            onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-                                                        />
-                                                        <input
-                                                            type="number" min="1"
-                                                            value={scoreReason[team.id + '_pts'] || ''}
-                                                            onChange={(e) => setScoreReason(prev => ({ ...prev, [team.id + '_pts']: e.target.value }))}
-                                                            placeholder="10"
-                                                            style={{
-                                                                width: '72px', padding: '0.625rem', borderRadius: '0.5rem', border: '1px solid #e2e8f0', fontSize: '0.9375rem', fontWeight: 700, textAlign: 'center', outline: 'none'
-                                                            }}
-                                                            onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                                                            onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-                                                        />
-                                                    </div>
-
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                                                        <motion.button
-                                                            whileHover={{ scale: isBusy ? 1 : 1.02 }} whileTap={{ scale: isBusy ? 1 : 0.98 }}
-                                                            onClick={() => applyScore(+pts)} disabled={isBusy}
-                                                            style={{
-                                                                padding: '0.625rem', borderRadius: '0.5rem',
-                                                                background: 'linear-gradient(180deg, #22c55e, #16a34a)', color: 'white', border: 'none',
-                                                                fontWeight: 700, fontSize: '0.875rem', cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1,
-                                                                boxShadow: '0 2px 4px rgba(22,163,74,0.2)'
-                                                            }}>
-                                                            + Add Merit
-                                                        </motion.button>
-                                                        <motion.button
-                                                            whileHover={{ scale: isBusy ? 1 : 1.02 }} whileTap={{ scale: isBusy ? 1 : 0.98 }}
-                                                            onClick={() => applyScore(-pts)} disabled={isBusy}
-                                                            style={{
-                                                                padding: '0.625rem', borderRadius: '0.5rem',
-                                                                background: 'white', color: '#dc2626', border: '1.5px solid #fca5a5',
-                                                                fontWeight: 700, fontSize: '0.875rem', cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1,
-                                                            }}>
-                                                            - Minus
-                                                        </motion.button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            )}
-
-                            {/* Recent action log */}
-                            {scoreLog.length > 0 && (
-                                <div className="card" style={{ padding: '1.25rem' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                                        <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.875rem' }}>Recent Actions</p>
-                                        <button
-                                            onClick={async () => { await supabase.from('score_logs').delete().neq('id', 0); fetchScoreLogs() }}
-                                            style={{ fontSize: '0.6875rem', color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '0.25rem 0.5rem', borderRadius: '0.375rem' }}>
-                                            Clear log
-                                        </button>
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                                        {scoreLog.slice(0, 20).map((entry, i) => (
-                                            <div key={entry.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.5rem 0.75rem', background: '#f8fafc', borderRadius: '0.5rem', border: '1px solid #f1f5f9' }}>
-                                                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: entry.delta > 0 ? '#16a34a' : '#dc2626', flexShrink: 0 }} />
-                                                <span style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#1e293b', flex: 1 }}>{entry.team_name ?? entry.teamName}</span>
-                                                <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: entry.delta > 0 ? '#16a34a' : '#dc2626' }}>{entry.delta > 0 ? `+${entry.delta}` : `${entry.delta}`}</span>
-                                                {entry.reason && <span style={{ fontSize: '0.75rem', color: '#64748b', maxWidth: '8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.reason}</span>}
-                                                <span style={{ fontSize: '0.6875rem', color: '#cbd5e1', flexShrink: 0 }}>
-                                                    {new Date(entry.created_at ?? entry.ts).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </motion.div>
-                    )}
-
-                    {/* ── USERS TAB (CRUD) ──────────────────────────────────────────── */}
-                    {activeTab === 'users' && (() => {
-                        const filteredUsers = users.filter(u =>
-                            u.full_name?.toLowerCase().includes(userSearch.toLowerCase()) ||
-                            u.team_name?.toLowerCase().includes(userSearch.toLowerCase())
-                        )
-                        return (
-                            <motion.div key="users" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                                style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-
-                                <div className="card" style={{ padding: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div>
-                                        <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.125rem', marginBottom: '0.25rem' }}>Manage Users</p>
-                                        <p style={{ color: '#64748b', fontSize: '0.8125rem' }}>{users.length} total registered users</p>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 240px', maxWidth: '400px' }}>
-                                        <div style={{ position: 'relative', flex: 1 }}>
-                                            <input
-                                                type="text"
-                                                className="input"
-                                                placeholder="Search name or team…"
-                                                value={userSearch}
-                                                onChange={e => setUserSearch(e.target.value)}
-                                                style={{ width: '100%', paddingLeft: '2.5rem' }}
-                                            />
-                                            <svg width="16" height="16" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)' }}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="card" style={{ overflowX: 'auto' }}>
-                                    {usersLoading ? (
-                                        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem 0' }}>
-                                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                                                style={{ width: 28, height: 28, border: '3px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%' }} />
-                                        </div>
-                                    ) : (
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', minWidth: '600px' }}>
-                                            <thead>
-                                                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                                    {['Name', 'Role', 'Team', 'Registered', 'Actions'].map((h, i) => (
-                                                        <th key={h} style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: i === 4 ? 'right' : 'left' }}>{h}</th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {filteredUsers.length === 0 ? (
-                                                    <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>No users found matching "{userSearch}"</td></tr>
-                                                ) : filteredUsers.map((user, i) => {
-                                                    const isEditing = editingUser === user.id
-                                                    const tdBase = { padding: '1rem', borderBottom: i < filteredUsers.length - 1 ? '1px solid #f1f5f9' : 'none', background: isEditing ? '#f8fafc' : 'white', verticalAlign: 'middle' }
-                                                    const roleColor = user.role === 'leader' ? { bg: '#fdf0f0', text: '#7B1C1C' } : user.role === 'facilitator' ? { bg: '#fefce8', text: '#854d0e' } : { bg: '#f1f5f9', text: '#475569' }
-
-                                                    if (isEditing) {
-                                                        return (
-                                                            <tr key={user.id} style={{ boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.06)' }}>
-                                                                <td style={tdBase}>
-                                                                    <input type="text" className="input" value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })} style={{ padding: '0.5rem', width: '100%' }} />
-                                                                </td>
-                                                                <td style={tdBase}>
-                                                                    <select className="input" value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })} style={{ padding: '0.5rem', width: '100%' }}>
-                                                                        <option value="student">Student</option>
-                                                                        <option value="leader">Leader</option>
-                                                                        <option value="facilitator">Facilitator</option>
-                                                                    </select>
-                                                                </td>
-                                                                <td style={tdBase}>
-                                                                    <select className="input" value={editForm.team_name} onChange={e => setEditForm({ ...editForm, team_name: e.target.value })} style={{ padding: '0.5rem', width: '100%' }}>
-                                                                        {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                                                                    </select>
-                                                                </td>
-                                                                <td style={{ ...tdBase, color: '#94a3b8', fontSize: '0.8125rem' }}>{fmtDate(user.created_at)}</td>
-                                                                <td style={{ ...tdBase, textAlign: 'right' }}>
-                                                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                                                        <button onClick={() => saveEditUser(user.id)} style={{ padding: '0.4rem 0.75rem', background: '#10b981', color: 'white', borderRadius: '0.5rem', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Save</button>
-                                                                        <button onClick={() => setEditingUser(null)} style={{ padding: '0.4rem 0.75rem', background: '#e2e8f0', color: '#475569', borderRadius: '0.5rem', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        )
-                                                    }
-
-                                                    return (
-                                                        <tr key={user.id}>
-                                                            <td style={{ ...tdBase, fontWeight: 600, color: '#0f172a' }}>{user.full_name}</td>
-                                                            <td style={tdBase}>
-                                                                <span style={{ background: roleColor.bg, color: roleColor.text, fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.625rem', borderRadius: '99px', textTransform: 'capitalize' }}>
-                                                                    {user.role}
-                                                                </span>
-                                                            </td>
-                                                            <td style={tdBase}>
-                                                                <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.625rem', borderRadius: '0.375rem' }}>
-                                                                    {user.team_name}
-                                                                </span>
-                                                            </td>
-                                                            <td style={{ ...tdBase, color: '#64748b', fontSize: '0.8125rem' }}>{fmtDate(user.created_at)}</td>
-                                                            <td style={{ ...tdBase, textAlign: 'right' }}>
-                                                                <div style={{ display: 'flex', gap: '0.375rem', justifyContent: 'flex-end' }}>
-                                                                    <button onClick={() => startEditUser(user)} style={{ padding: '0.375rem 0.625rem', background: '#f1f5f9', color: '#475569', borderRadius: '0.375rem', border: 'none', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>Edit</button>
-                                                                    <button onClick={() => deleteUser(user.id, user.full_name)} style={{ padding: '0.375rem 0.625rem', background: '#fef2f2', color: '#dc2626', borderRadius: '0.375rem', border: 'none', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>Delete</button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    )
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    )}
-                                </div>
-                            </motion.div>
-                        )
-                    })()}
-
+                    {/* Removed Teams, Scores, and Users Tabs -> relocated to AdminManageData */}
                 </AnimatePresence>
             </div>
         </div>

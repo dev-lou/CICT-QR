@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import QRCode from 'react-qr-code'
 import { supabase } from '../lib/supabase'
+import CustomDropdown from './CustomDropdown'
 
 export default function Dashboard({ uuid }) {
     const navigate = useNavigate()
@@ -12,6 +13,7 @@ export default function Dashboard({ uuid }) {
     const [editName, setEditName] = useState('')
     const [editTeam, setEditTeam] = useState('')
     const [editRole, setEditRole] = useState('student')
+    const [showMoreRoles, setShowMoreRoles] = useState(false)
     const [teams, setTeams] = useState([])
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -41,15 +43,33 @@ export default function Dashboard({ uuid }) {
     useEffect(() => { fetchStudent(); fetchTeams() }, [uuid])
 
     const handleSaveEdit = async () => {
-        if (!editName.trim() || !editTeam) return
+        if (!editName.trim() || !supabase) return
         setSaving(true); setError('')
         try {
-            if (!supabase) throw new Error('Supabase not configured.')
             const { error: dbError } = await supabase
                 .from('students')
-                .update({ full_name: editName.trim(), team_name: editTeam, role: editRole, edit_count: (student.edit_count || 0) + 1 })
+                .update({
+                    full_name: editName.trim(),
+                    team_name: (editRole === 'executive' || editRole === 'officer') ? '' : editTeam,
+                    role: editRole,
+                    edit_count: (student.edit_count || 0) + 1
+                })
                 .eq('uuid', uuid)
             if (dbError) throw dbError
+
+            // Create Audit Log
+            try {
+                await supabase.from('audit_logs').insert([{
+                    student_id: student.id,
+                    action: 'SELF_EDIT',
+                    target_name: editName.trim(),
+                    details: {
+                        before: { full_name: student.full_name, team_name: student.team_name, role: student.role },
+                        after: { full_name: editName.trim(), team_name: (editRole === 'executive' || editRole === 'officer') ? '' : editTeam, role: editRole }
+                    }
+                }])
+            } catch (auditErr) { console.error('Audit log failed:', auditErr) }
+
             setSuccessMsg('Profile updated!')
             setTimeout(() => setSuccessMsg(''), 3000)
             setEditing(false)
@@ -106,12 +126,18 @@ export default function Dashboard({ uuid }) {
                             <motion.div key="view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ width: '100%', textAlign: 'center' }}>
                                 <p style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.5rem' }}>{student?.full_name}</p>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-                                    <span className="badge badge-brand">{student?.team_name}</span>
+                                    {student?.team_name ? (
+                                        <span className="badge badge-brand">{student?.team_name}</span>
+                                    ) : null}
                                     <span style={{ background: '#fdf0f0', color: '#7B1C1C', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', textTransform: 'capitalize', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                                         {student?.role === 'leader' ? (
                                             <><svg width="11" height="11" viewBox="0 0 24 24" fill="#C9A84C" stroke="#C9A84C" strokeWidth={1}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>Leader</>
                                         ) : student?.role === 'facilitator' ? (
                                             <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>Facilitator</>
+                                        ) : student?.role === 'executive' ? (
+                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l-3.5 10.5L2 12l6.5 3.5L8 22l4-3 4 3-.5-6.5L22 12l-6.5-.5L12 2z" /></svg>Executive</>
+                                        ) : student?.role === 'officer' ? (
+                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>Officer</>
                                         ) : (
                                             <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" /></svg>Student</>
                                         )}
@@ -133,22 +159,45 @@ export default function Dashboard({ uuid }) {
                                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>Full Name</label>
                                     <input className="input" type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
                                 </div>
+                                {editRole !== 'executive' && editRole !== 'officer' && (
+                                    <CustomDropdown
+                                        label="Team"
+                                        value={editTeam}
+                                        options={teams}
+                                        onChange={setEditTeam}
+                                        placeholder="Select your team"
+                                    />
+                                )}
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>Team</label>
-                                    <select className="input" value={editTeam} onChange={(e) => setEditTeam(e.target.value)}
-                                        style={{ appearance: 'none', cursor: 'pointer', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cpath fill='%2394a3b8' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center' }}>
-                                        {teams.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Role</label>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                                        {[{ id: 'student', label: 'Student' }, { id: 'leader', label: 'Leader' }, { id: 'facilitator', label: 'Facilitator' }].map((r) => {
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
+                                        <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>Role</label>
+                                        <button type="button" onClick={() => {
+                                            setShowMoreRoles(!showMoreRoles)
+                                            if (!showMoreRoles && (editRole === 'student' || editRole === 'leader' || editRole === 'facilitator')) {
+                                                setEditRole('officer')
+                                            } else if (showMoreRoles && (editRole === 'executive' || editRole === 'officer')) {
+                                                setEditRole('student')
+                                            }
+                                        }}
+                                            style={{ background: 'none', border: 'none', color: '#7B1C1C', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                            </svg>
+                                            {showMoreRoles ? 'Regular Roles' : 'Admin Roles'}
+                                        </button>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: showMoreRoles ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                                        {(showMoreRoles
+                                            ? [{ id: 'executive', label: 'Executive' }, { id: 'officer', label: 'Officer' }]
+                                            : [{ id: 'student', label: 'Student' }, { id: 'leader', label: 'Leader' }, { id: 'facilitator', label: 'Facilitator' }]
+                                        ).map((r) => {
                                             const color = editRole === r.id ? '#7B1C1C' : '#94a3b8'
                                             const icons = {
                                                 student: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" /></svg>,
                                                 leader: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>,
                                                 facilitator: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>,
+                                                executive: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l-3.5 10.5L2 12l6.5 3.5L8 22l4-3 4 3-.5-6.5L22 12l-6.5-.5L12 2z" /></svg>,
+                                                officer: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>,
                                             }
                                             return (
                                                 <button key={r.id} type="button" onClick={() => setEditRole(r.id)}
@@ -215,22 +264,24 @@ export default function Dashboard({ uuid }) {
                     </motion.button>
                 </div>
 
-            </div>
+            </div >
 
-            {/* Conditional Admin Access for Leaders & Facilitators */}
-            {(student?.role === 'leader' || student?.role === 'facilitator') && (
-                <div style={{ position: 'fixed', bottom: '1rem', left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', fontSize: '0.6875rem' }}>
-                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-                    <a
-                        href="/admin"
-                        style={{ color: '#64748b', textDecoration: 'none', fontWeight: 600, transition: 'color 0.15s ease' }}
-                        onMouseOver={(e) => e.currentTarget.style.color = '#0f172a'}
-                        onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
-                    >
-                        Admin Access
-                    </a>
-                </div>
-            )}
-        </div>
+            {/* Conditional Admin Access for Executives & Officers */}
+            {
+                (student?.role === 'executive' || student?.role === 'officer') && (
+                    <div style={{ position: 'fixed', bottom: '1rem', left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', fontSize: '0.6875rem' }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                        <a
+                            href="/admin"
+                            style={{ color: '#64748b', textDecoration: 'none', fontWeight: 600, transition: 'color 0.15s ease' }}
+                            onMouseOver={(e) => e.currentTarget.style.color = '#0f172a'}
+                            onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                        >
+                            Admin Access
+                        </a>
+                    </div>
+                )
+            }
+        </div >
     )
 }
