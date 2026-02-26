@@ -2,10 +2,28 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 
+const RoleIcons = {
+    student: (color) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" />
+        </svg>
+    ),
+    leader: (color) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 15l-3-3h6l-3 3z" fill={color} opacity="0.3" /><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+        </svg>
+    ),
+    facilitator: (color) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /><path d="M9 14l2 2 4-4" />
+        </svg>
+    ),
+}
+
 const ROLES = [
-    { id: 'student', label: 'Student', icon: '🎓', desc: 'Event participant' },
-    { id: 'leader', label: 'Leader', icon: '⭐', desc: 'Team leader' },
-    { id: 'facilitator', label: 'Facilitator', icon: '🎯', desc: 'Event facilitator' },
+    { id: 'student', label: 'Student' },
+    { id: 'leader', label: 'Leader' },
+    { id: 'facilitator', label: 'Facilitator' },
 ]
 
 export default function Register({ onRegistered }) {
@@ -123,7 +141,7 @@ export default function Register({ onRegistered }) {
                                             border: `2px solid ${role === r.id ? '#7B1C1C' : '#e2e8f0'}`,
                                             background: role === r.id ? '#fdf0f0' : 'white',
                                         }}>
-                                        <span style={{ fontSize: '1rem' }}>{r.icon}</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{RoleIcons[r.id](role === r.id ? '#7B1C1C' : '#94a3b8')}</span>
                                         <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: role === r.id ? '#7B1C1C' : '#374151' }}>{r.label}</span>
                                     </button>
                                 ))}
