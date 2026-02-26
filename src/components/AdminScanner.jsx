@@ -42,6 +42,13 @@ export default function AdminScanner({ onLogout }) {
     const [scoreLoading, setScoreLoading] = useState(false)
     const [submitting, setSubmitting] = useState(new Set()) // team IDs currently being saved
 
+    // Users CRUD state
+    const [users, setUsers] = useState([])
+    const [usersLoading, setUsersLoading] = useState(false)
+    const [userSearch, setUserSearch] = useState('')
+    const [editingUser, setEditingUser] = useState(null) // ID of user being edited
+    const [editForm, setEditForm] = useState({})
+
     const dismissModal = () => {
         setScanModal(null)
         processingRef.current = false  // allow next scan only after admin dismisses
@@ -164,6 +171,55 @@ export default function AdminScanner({ onLogout }) {
             if (error) throw error
             await fetchTeams()
         } catch (err) { alert(err.message || 'Failed to delete team.') }
+    }
+
+    // ─── Users (CRUD) ────────────────────────────────────────────────────────────
+    const fetchUsers = useCallback(async () => {
+        if (!supabase) return
+        setUsersLoading(true)
+        try {
+            const { data, error } = await supabase.from('students').select('*').order('created_at', { ascending: false })
+            if (error) throw error
+            setUsers(data || [])
+        } catch (err) {
+            console.error('Failed to load users:', err)
+        } finally {
+            setUsersLoading(false)
+        }
+    }, [])
+
+    useEffect(() => {
+        if (activeTab === 'users') fetchUsers()
+    }, [activeTab, fetchUsers])
+
+    const deleteUser = async (id, name) => {
+        if (!supabase || !confirm(`Are you sure you want to delete ${name}? This cannot be undone.`)) return
+        try {
+            const { error } = await supabase.from('students').delete().eq('id', id)
+            if (error) throw error
+            fetchUsers()
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'User deleted', showConfirmButton: false, timer: 2000 })
+        } catch (err) { alert(err.message || 'Failed to delete user.') }
+    }
+
+    const startEditUser = (user) => {
+        setEditingUser(user.id)
+        setEditForm({ full_name: user.full_name, role: user.role, team_name: user.team_name })
+    }
+
+    const saveEditUser = async (id) => {
+        if (!supabase) return
+        try {
+            const { error } = await supabase.from('students').update({
+                full_name: editForm.full_name,
+                role: editForm.role,
+                team_name: editForm.team_name,
+            }).eq('id', id)
+            if (error) throw error
+            setEditingUser(null)
+            fetchUsers()
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'User updated', showConfirmButton: false, timer: 2000 })
+        } catch (err) { alert(err.message || 'Failed to update user.') }
     }
 
     // ─── Scanner ─────────────────────────────────────────────────────────────────
@@ -450,6 +506,10 @@ export default function AdminScanner({ onLogout }) {
                         {
                             id: 'scores', label: 'Scores',
                             icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><polyline points="8 6 12 2 16 6" /><line x1="12" y1="2" x2="12" y2="15" /><path d="M20 15H4a2 2 0 000 4h16a2 2 0 000-4z" /></svg>
+                        },
+                        {
+                            id: 'users', label: 'Users',
+                            icon: <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
                         },
                     ].map((tab) => (
                         <button key={tab.id} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}
@@ -1028,6 +1088,121 @@ export default function AdminScanner({ onLogout }) {
                             )}
                         </motion.div>
                     )}
+
+                    {/* ── USERS TAB (CRUD) ──────────────────────────────────────────── */}
+                    {activeTab === 'users' && (() => {
+                        const filteredUsers = users.filter(u =>
+                            u.full_name?.toLowerCase().includes(userSearch.toLowerCase()) ||
+                            u.team_name?.toLowerCase().includes(userSearch.toLowerCase())
+                        )
+                        return (
+                            <motion.div key="users" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                                style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+                                <div className="card" style={{ padding: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.125rem', marginBottom: '0.25rem' }}>Manage Users</p>
+                                        <p style={{ color: '#64748b', fontSize: '0.8125rem' }}>{users.length} total registered users</p>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 240px', maxWidth: '400px' }}>
+                                        <div style={{ position: 'relative', flex: 1 }}>
+                                            <input
+                                                type="text"
+                                                className="input"
+                                                placeholder="Search name or team…"
+                                                value={userSearch}
+                                                onChange={e => setUserSearch(e.target.value)}
+                                                style={{ width: '100%', paddingLeft: '2.5rem' }}
+                                            />
+                                            <svg width="16" height="16" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)' }}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="card" style={{ overflowX: 'auto' }}>
+                                    {usersLoading ? (
+                                        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem 0' }}>
+                                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                                style={{ width: 28, height: 28, border: '3px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%' }} />
+                                        </div>
+                                    ) : (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', minWidth: '600px' }}>
+                                            <thead>
+                                                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                                    {['Name', 'Role', 'Team', 'Registered', 'Actions'].map((h, i) => (
+                                                        <th key={h} style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: i === 4 ? 'right' : 'left' }}>{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredUsers.length === 0 ? (
+                                                    <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>No users found matching "{userSearch}"</td></tr>
+                                                ) : filteredUsers.map((user, i) => {
+                                                    const isEditing = editingUser === user.id
+                                                    const tdBase = { padding: '1rem', borderBottom: i < filteredUsers.length - 1 ? '1px solid #f1f5f9' : 'none', background: isEditing ? '#f8fafc' : 'white', verticalAlign: 'middle' }
+                                                    const roleColor = user.role === 'leader' ? { bg: '#fdf0f0', text: '#7B1C1C' } : user.role === 'facilitator' ? { bg: '#fefce8', text: '#854d0e' } : { bg: '#f1f5f9', text: '#475569' }
+
+                                                    if (isEditing) {
+                                                        return (
+                                                            <tr key={user.id} style={{ boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.06)' }}>
+                                                                <td style={tdBase}>
+                                                                    <input type="text" className="input" value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })} style={{ padding: '0.5rem', width: '100%' }} />
+                                                                </td>
+                                                                <td style={tdBase}>
+                                                                    <select className="input" value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })} style={{ padding: '0.5rem', width: '100%' }}>
+                                                                        <option value="student">Student</option>
+                                                                        <option value="leader">Leader</option>
+                                                                        <option value="facilitator">Facilitator</option>
+                                                                    </select>
+                                                                </td>
+                                                                <td style={tdBase}>
+                                                                    <select className="input" value={editForm.team_name} onChange={e => setEditForm({ ...editForm, team_name: e.target.value })} style={{ padding: '0.5rem', width: '100%' }}>
+                                                                        {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                                                    </select>
+                                                                </td>
+                                                                <td style={{ ...tdBase, color: '#94a3b8', fontSize: '0.8125rem' }}>{fmtDate(user.created_at)}</td>
+                                                                <td style={{ ...tdBase, textAlign: 'right' }}>
+                                                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                                                        <button onClick={() => saveEditUser(user.id)} style={{ padding: '0.4rem 0.75rem', background: '#10b981', color: 'white', borderRadius: '0.5rem', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Save</button>
+                                                                        <button onClick={() => setEditingUser(null)} style={{ padding: '0.4rem 0.75rem', background: '#e2e8f0', color: '#475569', borderRadius: '0.5rem', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )
+                                                    }
+
+                                                    return (
+                                                        <tr key={user.id}>
+                                                            <td style={{ ...tdBase, fontWeight: 600, color: '#0f172a' }}>{user.full_name}</td>
+                                                            <td style={tdBase}>
+                                                                <span style={{ background: roleColor.bg, color: roleColor.text, fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.625rem', borderRadius: '99px', textTransform: 'capitalize' }}>
+                                                                    {user.role}
+                                                                </span>
+                                                            </td>
+                                                            <td style={tdBase}>
+                                                                <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.625rem', borderRadius: '0.375rem' }}>
+                                                                    {user.team_name}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ ...tdBase, color: '#64748b', fontSize: '0.8125rem' }}>{fmtDate(user.created_at)}</td>
+                                                            <td style={{ ...tdBase, textAlign: 'right' }}>
+                                                                <div style={{ display: 'flex', gap: '0.375rem', justifyContent: 'flex-end' }}>
+                                                                    <button onClick={() => startEditUser(user)} style={{ padding: '0.375rem 0.625rem', background: '#f1f5f9', color: '#475569', borderRadius: '0.375rem', border: 'none', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>Edit</button>
+                                                                    <button onClick={() => deleteUser(user.id, user.full_name)} style={{ padding: '0.375rem 0.625rem', background: '#fef2f2', color: '#dc2626', borderRadius: '0.375rem', border: 'none', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>Delete</button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )
+                    })()}
 
                 </AnimatePresence>
             </div>
