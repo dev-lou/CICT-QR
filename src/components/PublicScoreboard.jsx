@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useSpring, useTransform } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 
 /* ── Rank config ── */
@@ -10,7 +10,7 @@ const RANK_STYLES = [
     { color: '#6366f1', glow: 'rgba(99,102,241,0.2)', barGrad: 'linear-gradient(90deg, #4338ca, #6366f1)', cardBg: 'rgba(255,255,255,0.04)', cardBorder: 'rgba(99,102,241,0.15)', label: '4TH' },
 ]
 
-/* ── Confetti (same as admin) ── */
+/* ── Confetti ── */
 function Confetti() {
     const pieces = Array.from({ length: 80 }, (_, i) => i)
     const colors = ['#C9A84C', '#f0d080', '#7B1C1C', '#ef4444', '#6366f1', '#06b6d4', '#10b981']
@@ -35,6 +35,22 @@ function Confetti() {
     )
 }
 
+/* ── Animated score number ── */
+function AnimatedScore({ value, color, glow, fontSize }) {
+    const spring = useSpring(value, { stiffness: 60, damping: 18 })
+    const display = useTransform(spring, v => Math.round(v).toString())
+    useEffect(() => { spring.set(value) }, [value, spring])
+    return (
+        <motion.span style={{
+            fontWeight: 900, fontSize, color, fontVariantNumeric: 'tabular-nums',
+            letterSpacing: '-0.04em', flexShrink: 0,
+            textShadow: `0 0 24px ${glow}`,
+        }}>
+            {display}
+        </motion.span>
+    )
+}
+
 export default function PublicScoreboard() {
     const [teams, setTeams] = useState([])
     const [settings, setSettings] = useState({
@@ -47,6 +63,7 @@ export default function PublicScoreboard() {
     const [winnerScore, setWinnerScore] = useState(0)
     const winnerScoreRef = useRef(null)
     const prevRevealState = useRef('idle')
+    const prevSettings = useRef(settings)
 
     const fetchAll = async () => {
         if (!supabase) return
@@ -76,14 +93,13 @@ export default function PublicScoreboard() {
         }
     }, [])
 
-    // Trigger winner animation when transitioning from countdown -> winner
+    // Trigger winner animation when reveal_state transitions to 'winner'
     useEffect(() => {
         const prev = prevRevealState.current
         const curr = settings.reveal_state
         if (prev !== 'winner' && curr === 'winner') {
             setShowConfetti(true)
             setTimeout(() => setShowConfetti(false), 6000)
-            // Animate winner score
             const sorted = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
             const target = sorted[0]?.score ?? 0
             setWinnerScore(0)
@@ -96,12 +112,11 @@ export default function PublicScoreboard() {
                 if (cur >= target) clearInterval(winnerScoreRef.current)
             }, 25)
         }
-        if (curr === 'idle') {
-            setShowConfetti(false)
-            setWinnerScore(0)
-        }
+        if (curr === 'idle') { setShowConfetti(false); setWinnerScore(0) }
         prevRevealState.current = curr
     }, [settings.reveal_state])
+
+    useEffect(() => { prevSettings.current = settings }, [settings])
 
     const sorted = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     const maxScore = Math.max(...sorted.map(t => t.score ?? 0), 1)
@@ -129,16 +144,26 @@ export default function PublicScoreboard() {
             {/* ── Countdown overlay ── */}
             <AnimatePresence>
                 {reveal_state === 'countdown' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        transition={{ duration: 0.4 }}
                         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.96)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-                        <p style={{ color: '#475569', fontSize: '1rem', fontWeight: 600, marginBottom: '1.25rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Revealing Champion</p>
                         <motion.p
-                            key={reveal_countdown}
-                            initial={{ scale: 0.2, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 3, opacity: 0 }}
-                            transition={{ duration: 0.45, ease: 'easeOut' }}
-                            style={{ fontSize: 'clamp(7rem, 25vw, 12rem)', fontWeight: 900, color: 'white', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-                            {reveal_countdown === 0 ? '✦' : reveal_countdown}
+                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+                            style={{ color: '#475569', fontSize: '1rem', fontWeight: 600, marginBottom: '1.25rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                            Revealing Champion
                         </motion.p>
+                        <AnimatePresence mode="popLayout">
+                            <motion.p
+                                key={reveal_countdown}
+                                initial={{ scale: 0.1, opacity: 0, y: 40 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 2.5, opacity: 0, y: -20 }}
+                                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                                style={{ fontSize: 'clamp(7rem, 25vw, 12rem)', fontWeight: 900, color: '#C9A84C', lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: '0 0 80px rgba(201,168,76,0.5)' }}>
+                                {reveal_countdown === 0 ? '✦' : reveal_countdown}
+                            </motion.p>
+                        </AnimatePresence>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -146,17 +171,15 @@ export default function PublicScoreboard() {
             {/* ── Winner screen ── */}
             <AnimatePresence>
                 {reveal_state === 'winner' && winner && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        transition={{ duration: 0.6 }}
                         style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'radial-gradient(ellipse at 50% 40%, #1a1060 0%, #080b18 65%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '3rem 1.5rem' }}>
-
-                        {/* Pulsing rings */}
                         {[0, 1, 2].map(i => (
                             <motion.div key={i} initial={{ scale: 0, opacity: 0.6 }} animate={{ scale: 3.5, opacity: 0 }}
                                 transition={{ duration: 3.5, delay: i * 0.9, repeat: Infinity }}
                                 style={{ position: 'absolute', width: '12rem', height: '12rem', borderRadius: '50%', border: '1.5px solid rgba(201,168,76,0.2)' }} />
                         ))}
-
-                        {/* Trophy */}
                         <motion.div initial={{ scale: 0, rotate: -15 }} animate={{ scale: 1, rotate: 0 }}
                             transition={{ type: 'spring', stiffness: 180, damping: 14, delay: 0.15 }}
                             style={{ marginBottom: '1.75rem' }}>
@@ -177,23 +200,19 @@ export default function PublicScoreboard() {
                                 </svg>
                             </div>
                         </motion.div>
-
                         <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
                             style={{ fontSize: 'clamp(0.625rem, 2vw, 0.875rem)', fontWeight: 800, color: '#C9A84C', letterSpacing: '0.28em', textTransform: 'uppercase', marginBottom: '0.625rem' }}>
                             Congratulations
                         </motion.p>
-
                         <motion.h2 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}
                             style={{ fontSize: 'clamp(1.875rem, 7vw, 4.25rem)', fontWeight: 900, background: 'linear-gradient(125deg, #C9A84C 0%, #f0d080 50%, #C9A84C 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.03em', textAlign: 'center', lineHeight: 1.08, marginBottom: '1.75rem' }}>
                             {winner.name}
                         </motion.h2>
-
                         <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.9, type: 'spring' }}
                             style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', background: 'rgba(201,168,76,0.1)', padding: '0.875rem 2.5rem', borderRadius: '1.25rem', border: '1px solid rgba(201,168,76,0.25)' }}>
                             <span style={{ fontSize: 'clamp(2.75rem, 9vw, 4.5rem)', fontWeight: 900, color: '#C9A84C', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{winnerScore}</span>
                             <span style={{ fontSize: '0.9375rem', color: '#8B6914', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em' }}>pts</span>
                         </motion.div>
-
                         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }}
                             style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.9rem', fontWeight: 600, marginTop: '2rem', textAlign: 'center', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                             IT Week 2026 Champion
@@ -221,9 +240,13 @@ export default function PublicScoreboard() {
 
             {/* ── Scoreboard cards ── */}
             <div style={{ flex: 1, maxWidth: '56rem', width: '100%', margin: '0 auto', padding: '0.5rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative', zIndex: 1 }}>
-                <AnimatePresence>
+                <AnimatePresence mode="popLayout">
                     {hide_all ? (
-                        <motion.div key="hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                        <motion.div key="hidden"
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
                             style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '6rem 1rem', gap: '1rem' }}>
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
                                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
@@ -236,95 +259,155 @@ export default function PublicScoreboard() {
                         const isTop = index === 0
                         const isHiddenTop = hide_top2 && index < 2
                         const rs = RANK_STYLES[index] ?? RANK_STYLES[3]
-
-                        // Hide = completely invisible (dark text on dark, no blur bleeding)
                         const nameHidden = hide_names || isHiddenTop
                         const scoreHidden = hide_scores || isHiddenTop
 
                         return (
-                            <motion.div key={team.id}
-                                initial={{ opacity: 0, x: -32, scale: 0.97 }}
-                                animate={{ opacity: 1, x: 0, scale: 1 }}
-                                transition={{ delay: index * 0.09, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                            <motion.div
+                                key={team.id}
+                                layout
+                                initial={{ opacity: 0, x: -40, scale: 0.96 }}
+                                animate={{
+                                    opacity: 1, x: 0, scale: 1,
+                                    // Flash gold when top2 is revealed
+                                    boxShadow: isTop && !isHiddenTop
+                                        ? `0 0 40px -8px ${rs.glow}, inset 0 0 40px -20px ${rs.glow}`
+                                        : '0 0 0px transparent',
+                                }}
+                                exit={{ opacity: 0, x: 40, scale: 0.96 }}
+                                transition={{ delay: index * 0.09, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                                 style={{
                                     background: rs.cardBg,
                                     border: `1.5px solid ${rs.cardBorder}`,
                                     borderRadius: '1.25rem',
                                     padding: isTop ? '1.75rem 2rem' : '1.375rem 2rem',
-                                    boxShadow: isTop && !isHiddenTop ? `0 0 40px -8px ${rs.glow}, inset 0 0 40px -20px ${rs.glow}` : 'none',
                                     position: 'relative', overflow: 'hidden',
                                 }}>
-                                {/* Gold glint top edge for 1st */}
-                                {isTop && !isHiddenTop && (
-                                    <div style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: '1.5px', background: 'linear-gradient(90deg, transparent, rgba(201,168,76,0.6), transparent)', borderRadius: '99px' }} />
-                                )}
+
+                                {/* Gold glint for 1st */}
+                                <AnimatePresence>
+                                    {isTop && !isHiddenTop && (
+                                        <motion.div
+                                            key="glint"
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            transition={{ duration: 0.8 }}
+                                            style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: '1.5px', background: 'linear-gradient(90deg, transparent, rgba(201,168,76,0.6), transparent)', borderRadius: '99px' }} />
+                                    )}
+                                </AnimatePresence>
+
+                                {/* Flash overlay when revealed */}
+                                <AnimatePresence>
+                                    {!isHiddenTop && prevSettings.current[`hide_top2`] && isTop && (
+                                        <motion.div key="flash"
+                                            initial={{ opacity: 0.6 }} animate={{ opacity: 0 }}
+                                            transition={{ duration: 1.2, ease: 'easeOut' }}
+                                            style={{ position: 'absolute', inset: 0, background: 'rgba(201,168,76,0.18)', borderRadius: '1.25rem', pointerEvents: 'none' }} />
+                                    )}
+                                </AnimatePresence>
 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: hide_bars ? 0 : '1rem' }}>
                                     {/* Rank badge */}
-                                    <div style={{
-                                        width: isTop ? '3.5rem' : '3rem', height: isTop ? '3.5rem' : '3rem',
-                                        borderRadius: '50%', background: `${rs.color}14`, border: `2px solid ${isHiddenTop ? 'rgba(255,255,255,0.06)' : rs.color}`,
-                                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                        flexShrink: 0, boxShadow: isHiddenTop ? 'none' : `0 0 16px -4px ${rs.glow}`,
-                                    }}>
+                                    <motion.div
+                                        animate={{
+                                            width: isTop ? '3.5rem' : '3rem',
+                                            height: isTop ? '3.5rem' : '3rem',
+                                            borderColor: isHiddenTop ? 'rgba(255,255,255,0.06)' : rs.color,
+                                        }}
+                                        transition={{ duration: 0.4 }}
+                                        style={{
+                                            borderRadius: '50%', background: `${rs.color}14`,
+                                            border: `2px solid ${isHiddenTop ? 'rgba(255,255,255,0.06)' : rs.color}`,
+                                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                            flexShrink: 0, boxShadow: isHiddenTop ? 'none' : `0 0 16px -4px ${rs.glow}`,
+                                        }}>
                                         <span style={{ fontSize: isTop ? '1.125rem' : '0.9375rem', fontWeight: 900, color: isHiddenTop ? 'rgba(255,255,255,0.08)' : rs.color, lineHeight: 1 }}>
                                             {isHiddenTop ? '?' : index + 1}
                                         </span>
-                                        {!isHiddenTop && <span style={{ fontSize: '0.4rem', fontWeight: 800, color: rs.color, letterSpacing: '0.06em', opacity: 0.8 }}>{rs.label}</span>}
+                                        <AnimatePresence>
+                                            {!isHiddenTop && (
+                                                <motion.span
+                                                    initial={{ opacity: 0, y: 4 }} animate={{ opacity: 0.8, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                                                    transition={{ duration: 0.3 }}
+                                                    style={{ fontSize: '0.4rem', fontWeight: 800, color: rs.color, letterSpacing: '0.06em' }}>
+                                                    {rs.label}
+                                                </motion.span>
+                                            )}
+                                        </AnimatePresence>
+                                    </motion.div>
+
+                                    {/* Team name with animated reveal */}
+                                    <div style={{ flex: 1, overflow: 'hidden', position: 'relative', minHeight: '2rem' }}>
+                                        <AnimatePresence mode="wait">
+                                            {nameHidden ? (
+                                                <motion.div key="redacted"
+                                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, x: -10 }}
+                                                    transition={{ duration: 0.3 }}
+                                                    style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
+                                                    <div style={{ height: '55%', background: 'rgba(255,255,255,0.07)', borderRadius: '4px', width: '65%' }} />
+                                                </motion.div>
+                                            ) : (
+                                                <motion.span key="name"
+                                                    initial={{ opacity: 0, y: 12, filter: 'blur(8px)' }}
+                                                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                                                    exit={{ opacity: 0, y: -12, filter: 'blur(8px)' }}
+                                                    transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                                                    style={{
+                                                        display: 'block',
+                                                        fontWeight: 800,
+                                                        fontSize: isTop ? 'clamp(1.25rem, 3vw, 1.75rem)' : 'clamp(1rem, 2.5vw, 1.375rem)',
+                                                        color: isTop ? '#f0d080' : 'rgba(255,255,255,0.85)',
+                                                        letterSpacing: '-0.02em', lineHeight: 1.15,
+                                                    }}>
+                                                    {team.name}
+                                                </motion.span>
+                                            )}
+                                        </AnimatePresence>
                                     </div>
 
-                                    {/* Team name — use opacity 0 + blur: none for clean invisible, not color transparent */}
-                                    <div style={{ flex: 1, overflow: 'hidden', position: 'relative', height: isTop ? '2rem' : '1.75rem' }}>
-                                        <span style={{
-                                            fontWeight: 800,
-                                            fontSize: isTop ? 'clamp(1.25rem, 3vw, 1.75rem)' : 'clamp(1rem, 2.5vw, 1.375rem)',
-                                            color: isTop ? '#f0d080' : 'rgba(255,255,255,0.85)',
-                                            letterSpacing: '-0.02em',
-                                            lineHeight: 1.15,
-                                            // Use visibility+select to fully hide, then overlay a blur block
-                                            visibility: nameHidden ? 'hidden' : 'visible',
-                                        }}>
-                                            {team.name}
-                                        </span>
-                                        {nameHidden && (
-                                            <div style={{
-                                                position: 'absolute', inset: 0,
-                                                background: 'linear-gradient(90deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.04) 60%, transparent 100%)',
-                                                borderRadius: '0.5rem',
-                                                backdropFilter: 'blur(0px)',
-                                            }}>
-                                                {/* Redacted bar */}
-                                                <div style={{ height: '60%', marginTop: '15%', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', width: '70%' }} />
-                                            </div>
-                                        )}
+                                    {/* Score with animated reveal */}
+                                    <div style={{ flexShrink: 0, minWidth: '3.5rem', textAlign: 'right' }}>
+                                        <AnimatePresence mode="wait">
+                                            {scoreHidden ? (
+                                                <motion.div key="score-hidden"
+                                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, x: 10 }}
+                                                    transition={{ duration: 0.3 }}
+                                                    style={{ height: isTop ? '2.25rem' : '1.75rem', background: 'rgba(255,255,255,0.07)', borderRadius: '6px', width: '3rem', marginLeft: 'auto' }} />
+                                            ) : (
+                                                <motion.div key="score-visible"
+                                                    initial={{ opacity: 0, scale: 0.6, filter: 'blur(12px)' }}
+                                                    animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                                                    exit={{ opacity: 0, scale: 0.6 }}
+                                                    transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}>
+                                                    <AnimatedScore
+                                                        value={score}
+                                                        color={rs.color}
+                                                        glow={rs.glow}
+                                                        fontSize={isTop ? 'clamp(1.75rem, 4vw, 2.5rem)' : 'clamp(1.375rem, 3vw, 2rem)'}
+                                                    />
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
                                     </div>
-
-                                    {/* Score */}
-                                    <span style={{
-                                        fontWeight: 900,
-                                        fontSize: isTop ? 'clamp(1.75rem, 4vw, 2.5rem)' : 'clamp(1.375rem, 3vw, 2rem)',
-                                        color: scoreHidden ? 'transparent' : rs.color,
-                                        textShadow: scoreHidden ? 'none' : `0 0 24px ${rs.glow}`,
-                                        // Hide score: invisible + no glow
-                                        visibility: scoreHidden ? 'hidden' : 'visible',
-                                        fontVariantNumeric: 'tabular-nums',
-                                        letterSpacing: '-0.04em',
-                                        flexShrink: 0,
-                                    }}>
-                                        {score}
-                                    </span>
                                 </div>
 
-                                {!hide_bars && (
-                                    <div style={{ height: isTop ? '0.625rem' : '0.5rem', background: 'rgba(255,255,255,0.06)', borderRadius: '99px', overflow: 'hidden' }}>
+                                {/* Progress bar with smooth reveal */}
+                                <AnimatePresence>
+                                    {!hide_bars && (
                                         <motion.div
-                                            initial={{ width: 0 }}
-                                            animate={{ width: isHiddenTop ? '0%' : `${pct}%` }}
-                                            transition={{ duration: 1, delay: index * 0.09 + 0.25, ease: 'easeOut' }}
-                                            style={{ height: '100%', borderRadius: '99px', background: rs.barGrad, boxShadow: `0 0 12px 0 ${rs.glow}` }}
-                                        />
-                                    </div>
-                                )}
+                                            key="bar-wrap"
+                                            initial={{ opacity: 0, scaleY: 0 }}
+                                            animate={{ opacity: 1, scaleY: 1 }}
+                                            exit={{ opacity: 0, scaleY: 0 }}
+                                            style={{ height: isTop ? '0.625rem' : '0.5rem', background: 'rgba(255,255,255,0.06)', borderRadius: '99px', overflow: 'hidden', transformOrigin: 'bottom' }}>
+                                            <motion.div
+                                                initial={{ width: 0 }}
+                                                animate={{ width: isHiddenTop ? '0%' : `${pct}%` }}
+                                                transition={{ duration: 1.1, delay: 0.2, ease: 'easeOut' }}
+                                                style={{ height: '100%', borderRadius: '99px', background: rs.barGrad, boxShadow: `0 0 12px 0 ${rs.glow}` }}
+                                            />
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </motion.div>
                         )
                     })}
