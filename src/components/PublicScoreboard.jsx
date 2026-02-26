@@ -10,42 +10,42 @@ export default function PublicScoreboard() {
     })
     const [loading, setLoading] = useState(true)
 
-    // Fetch teams + settings
+    // Fetch both teams and settings
+    const fetchAll = async () => {
+        if (!supabase) return
+        const [{ data: teamsData }, { data: settingsData }] = await Promise.all([
+            supabase.from('teams').select('id, name, score').order('score', { ascending: false }),
+            supabase.from('scoreboard_settings').select('*').eq('id', 1).single(),
+        ])
+        if (teamsData) setTeams(teamsData)
+        if (settingsData) setSettings(settingsData)
+        setLoading(false)
+    }
+
     useEffect(() => {
         if (!supabase) return
-        const load = async () => {
-            const [{ data: teamsData }, { data: settingsData }] = await Promise.all([
-                supabase.from('teams').select('id, name, score').order('score', { ascending: false }),
-                supabase.from('scoreboard_settings').select('*').eq('id', 1).single(),
-            ])
-            if (teamsData) setTeams(teamsData)
-            if (settingsData) setSettings(settingsData)
-            setLoading(false)
-        }
-        load()
+        fetchAll()
 
-        // Realtime: teams score changes
+        // Realtime subscriptions (may require replication enabled in Supabase dashboard)
         const teamChan = supabase
             .channel('pub-teams')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, async () => {
-                const { data } = await supabase.from('teams').select('id, name, score').order('score', { ascending: false })
-                if (data) setTeams(data)
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, fetchAll)
             .subscribe()
-
-        // Realtime: settings toggle changes
         const settingsChan = supabase
             .channel('pub-settings')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'scoreboard_settings' }, (payload) => {
-                if (payload.new) setSettings(payload.new)
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scoreboard_settings' }, fetchAll)
             .subscribe()
+
+        // Guaranteed fallback: poll every 3 seconds regardless of realtime status
+        const poll = setInterval(fetchAll, 3000)
 
         return () => {
             supabase.removeChannel(teamChan)
             supabase.removeChannel(settingsChan)
+            clearInterval(poll)
         }
     }, [])
+
 
     const sorted = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     const maxScore = Math.max(...sorted.map(t => t.score ?? 0), 1)

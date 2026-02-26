@@ -226,6 +226,42 @@ export default function Scoreboard() {
         setHideNames(true); setHideScores(true); setHideTop2(true); setHideBars(true); setHideAll(false)
     }
 
+    // Confirmation wrapper — prevents accidental toggle during live event
+    const confirmToggle = async (label, currentValue, setter) => {
+        const action = currentValue ? 'Show' : 'Hide'
+        const result = await Swal.fire({
+            title: `${action} ${label}?`,
+            text: `This will ${action.toLowerCase()} the ${label.toLowerCase()} on the public scoreboard.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#7B1C1C',
+            cancelButtonColor: '#334155',
+            confirmButtonText: `Yes, ${action}`,
+            cancelButtonText: 'Cancel',
+            background: '#0f172a',
+            color: '#e2e8f0',
+            backdrop: 'rgba(0,0,0,0.6)',
+        })
+        if (result.isConfirmed) setter(v => !v)
+    }
+
+    const confirmReveal = async () => {
+        const result = await Swal.fire({
+            title: '🏆 Reveal Winner?',
+            text: 'This will start the 5-second countdown and show the winner to everyone watching the public scoreboard!',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#f59e0b',
+            cancelButtonColor: '#334155',
+            confirmButtonText: '🔥 Yes, Reveal!',
+            cancelButtonText: 'Not yet',
+            background: '#0f172a',
+            color: '#e2e8f0',
+            backdrop: 'rgba(0,0,0,0.7)',
+        })
+        if (result.isConfirmed) startReveal()
+    }
+
     const sorted = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     const maxScore = Math.max(BASE_SCORE, ...teams.map(t => t.score ?? 0))
     const winner = sorted[0]
@@ -290,11 +326,11 @@ export default function Scoreboard() {
                         {/* Section: Visibility */}
                         <p style={{ fontSize: '0.5875rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.5rem' }}>Visibility</p>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                            <ToggleRow label="Hide Names" IconEl={Icon.EyeOff} active={hideNames} onChange={() => setHideNames(v => !v)} accentColor="#8b5cf6" />
-                            <ToggleRow label="Hide Scores" IconEl={Icon.Hash} active={hideScores} onChange={() => setHideScores(v => !v)} accentColor="#06b6d4" />
-                            <ToggleRow label="Hide Bars" IconEl={Icon.BarChart} active={hideBars} onChange={() => setHideBars(v => !v)} accentColor="#f59e0b" />
-                            <ToggleRow label="Hide Top 2 (suspense)" IconEl={Icon.Medal} active={hideTop2} onChange={() => setHideTop2(v => !v)} accentColor="#ec4899" />
-                            <ToggleRow label="Hide Everything" IconEl={Icon.Lock} active={hideAll} onChange={() => setHideAll(v => !v)} accentColor="#ef4444" />
+                            <ToggleRow label="Hide Names" IconEl={Icon.EyeOff} active={hideNames} onChange={() => confirmToggle('Names', hideNames, setHideNames)} accentColor="#8b5cf6" />
+                            <ToggleRow label="Hide Scores" IconEl={Icon.Hash} active={hideScores} onChange={() => confirmToggle('Scores', hideScores, setHideScores)} accentColor="#06b6d4" />
+                            <ToggleRow label="Hide Bars" IconEl={Icon.BarChart} active={hideBars} onChange={() => confirmToggle('Bars', hideBars, setHideBars)} accentColor="#f59e0b" />
+                            <ToggleRow label="Hide Top 2 (suspense)" IconEl={Icon.Medal} active={hideTop2} onChange={() => confirmToggle('Top 2', hideTop2, setHideTop2)} accentColor="#ec4899" />
+                            <ToggleRow label="Hide Everything" IconEl={Icon.Lock} active={hideAll} onChange={() => confirmToggle('Everything', hideAll, setHideAll)} accentColor="#ef4444" />
                         </div>
 
                         <div style={{ margin: '0.875rem 0 0.5rem', height: '1px', background: 'rgba(255,255,255,0.05)' }} />
@@ -302,7 +338,7 @@ export default function Scoreboard() {
                         {/* Section: Reveal */}
                         <p style={{ fontSize: '0.5875rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.5rem' }}>Ceremony</p>
                         {revealState === 'idle' && (
-                            <motion.button onClick={startReveal} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                            <motion.button onClick={confirmReveal} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                                 style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
                                     width: '100%', padding: '0.7rem', borderRadius: '0.75rem', border: 'none',
