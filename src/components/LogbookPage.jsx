@@ -10,6 +10,7 @@ export default function LogbookPage({ uuid }) {
     const [loading, setLoading] = useState(true)
     const [filter, setFilter] = useState('all')
     const [dayFilter, setDayFilter] = useState('all')
+    const [myRole, setMyRole] = useState('student')
 
     const fetchData = useCallback(async () => {
         if (!supabase || !uuid) return
@@ -17,17 +18,29 @@ export default function LogbookPage({ uuid }) {
         try {
             const { data: me } = await supabase
                 .from('students')
-                .select('id, full_name, team_name')
+                .select('id, full_name, team_name, role')
                 .eq('uuid', uuid)
                 .single()
             if (!me) { navigate('/'); return }
             setMyStudent(me)
+            const role = me.role || 'student'
+            setMyRole(role)
 
-            const { data: logs } = await supabase
-                .from('logbook')
-                .select('id, time_in, time_out, students(id, full_name, team_name)')
-                .order('time_in', { ascending: false })
-            setLogbook(logs || [])
+            if (role === 'leader' || role === 'facilitator') {
+                // Staff see the staff_logbook
+                const { data: logs } = await supabase
+                    .from('staff_logbook')
+                    .select('id, time_in, time_out, event, students(id, full_name, team_name, role)')
+                    .order('time_in', { ascending: false })
+                setLogbook(logs || [])
+            } else {
+                // Students see the regular logbook
+                const { data: logs } = await supabase
+                    .from('logbook')
+                    .select('id, time_in, time_out, students(id, full_name, team_name)')
+                    .order('time_in', { ascending: false })
+                setLogbook(logs || [])
+            }
         } catch (err) {
             console.error(err)
         } finally {
@@ -110,10 +123,15 @@ export default function LogbookPage({ uuid }) {
                         </svg>
                     </button>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontWeight: 800, fontSize: '0.9375rem', color: '#0f172a', lineHeight: 1.2 }}>📋 Attendance Logbook</p>
+                        <p style={{ fontWeight: 800, fontSize: '0.9375rem', color: '#0f172a', lineHeight: 1.2 }}>
+                            {myRole === 'leader' || myRole === 'facilitator' ? '📋 Staff Logbook' : '📋 Attendance Logbook'}
+                        </p>
                         {myStudent && (
                             <p style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>
-                                Signed in as <span style={{ color: '#6366f1', fontWeight: 600 }}>{myStudent.full_name}</span> · your rows are highlighted
+                                Signed in as <span style={{ color: '#7B1C1C', fontWeight: 600 }}>{myStudent.full_name}</span>
+                                {' · '}
+                                <span style={{ textTransform: 'capitalize' }}>{myRole}</span>
+                                {' · your rows are highlighted'}
                             </p>
                         )}
                     </div>
