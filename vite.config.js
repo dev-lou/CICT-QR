@@ -22,13 +22,13 @@ export default defineConfig({
         categories: ['education', 'productivity', 'events'],
         icons: [
           {
-            src: 'logo.png',
+            src: 'pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: 'logo.png',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
@@ -36,15 +36,15 @@ export default defineConfig({
         ],
         screenshots: [
           {
-            src: 'logo.png',
-            sizes: '512x512',
+            src: 'screenshot-wide.png',
+            sizes: '1920x1080',
             type: 'image/png',
             form_factor: 'wide',
             label: 'Home Screen'
           },
           {
-            src: 'logo.png',
-            sizes: '512x512',
+            src: 'screenshot-narrow.png',
+            sizes: '1080x1920',
             type: 'image/png',
             form_factor: 'narrow',
             label: 'Mobile View'
