@@ -15,8 +15,25 @@ export default function AdminScanner({ onLogout }) {
     const html5QrCodeRef = useRef(null)
     const processingRef = useRef(false)
 
-    // Modal alert state (replaces inline result card)
     const [scanModal, setScanModal] = useState(null) // { type, name, message }
+
+    // Synthetic scanner beep using Web Audio API
+    const playBeep = useCallback(() => {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            const ctx = new AudioContext();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, ctx.currentTime); // High pitch scanner beep
+            gain.gain.setValueAtTime(0.1, ctx.currentTime);
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.15);
+            osc.stop(ctx.currentTime + 0.15);
+        } catch (e) { }
+    }, []);
 
     // Student Logbook state
     const [logbook, setLogbook] = useState([])
@@ -249,6 +266,10 @@ export default function AdminScanner({ onLogout }) {
                 }
                 const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
                 if (insertErr) throw insertErr
+
+                // Play success beep
+                playBeep();
+
                 setScanModal({ type: 'success', name: student.full_name, message: `✅ Checked In! (${roleLabel})` })
             } else {
                 const { data: openEntry, error: findErr } = await supabase
@@ -268,6 +289,10 @@ export default function AdminScanner({ onLogout }) {
                 const { error: updateErr } = await supabase
                     .from(table).update({ time_out: new Date().toISOString() }).eq('id', openEntry.id)
                 if (updateErr) throw updateErr
+
+                // Play success beep
+                playBeep();
+
                 setScanModal({ type: 'info', name: student.full_name, message: `👋 Checked Out! (${roleLabel})` })
             }
         } catch (err) {
@@ -603,6 +628,37 @@ export default function AdminScanner({ onLogout }) {
                     {activeTab === 'logbook' && (
                         <motion.div key="logbook" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                             style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+                            {/* Global Dashboard Stats */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '1rem' }}>
+                                <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+                                    <div style={{ background: '#eef2ff', width: '3rem', height: '3rem', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}>
+                                        <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                                    </div>
+                                    <div>
+                                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Students</p>
+                                        <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{users.length}</p>
+                                    </div>
+                                </div>
+                                <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+                                    <div style={{ background: '#dcfce7', width: '3rem', height: '3rem', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+                                        <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                    </div>
+                                    <div>
+                                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Checked In Today</p>
+                                        <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{scanCount}</p>
+                                    </div>
+                                </div>
+                                <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+                                    <div style={{ background: '#fef3c7', width: '3rem', height: '3rem', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706' }}>
+                                        <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                                    </div>
+                                    <div>
+                                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Teams</p>
+                                        <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{teams.length}</p>
+                                    </div>
+                                </div>
+                            </div>
 
                             {/* Day selector tabs */}
                             {eventDays.length > 0 && (
