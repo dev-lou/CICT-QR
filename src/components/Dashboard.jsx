@@ -11,6 +11,7 @@ export default function Dashboard({ uuid }) {
     const [editing, setEditing] = useState(false)
     const [editName, setEditName] = useState('')
     const [editTeam, setEditTeam] = useState('')
+    const [editRole, setEditRole] = useState('student')
     const [teams, setTeams] = useState([])
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -25,6 +26,7 @@ export default function Dashboard({ uuid }) {
             setStudent(data)
             setEditName(data.full_name)
             setEditTeam(data.team_name)
+            setEditRole(data.role || 'student')
         } catch (err) {
             setError('Could not load your profile.')
         } finally { setLoading(false) }
@@ -45,7 +47,7 @@ export default function Dashboard({ uuid }) {
             if (!supabase) throw new Error('Supabase not configured.')
             const { error: dbError } = await supabase
                 .from('students')
-                .update({ full_name: editName.trim(), team_name: editTeam, edit_count: (student.edit_count || 0) + 1 })
+                .update({ full_name: editName.trim(), team_name: editTeam, role: editRole, edit_count: (student.edit_count || 0) + 1 })
                 .eq('uuid', uuid)
             if (dbError) throw dbError
             setSuccessMsg('Profile updated!')
@@ -103,7 +105,12 @@ export default function Dashboard({ uuid }) {
                         {!editing ? (
                             <motion.div key="view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ width: '100%', textAlign: 'center' }}>
                                 <p style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.5rem' }}>{student?.full_name}</p>
-                                <span className="badge badge-brand" style={{ marginBottom: '1.25rem', display: 'inline-block' }}>{student?.team_name}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+                                    <span className="badge badge-brand">{student?.team_name}</span>
+                                    <span style={{ background: '#fdf0f0', color: '#7B1C1C', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', textTransform: 'capitalize' }}>
+                                        {student?.role === 'leader' ? '⭐ Leader' : student?.role === 'facilitator' ? '🎯 Facilitator' : '🎓 Student'}
+                                    </span>
+                                </div>
                                 {editsLeft > 0 && (
                                     <div>
                                         <button className="btn-secondary" onClick={() => setEditing(true)} style={{ fontSize: '0.875rem', padding: '0.625rem 1rem' }}>
@@ -127,8 +134,20 @@ export default function Dashboard({ uuid }) {
                                         {teams.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
                                     </select>
                                 </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Role</label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                                        {[{ id: 'student', icon: '🎓', label: 'Student' }, { id: 'leader', icon: '⭐', label: 'Leader' }, { id: 'facilitator', icon: '🎯', label: 'Facilitator' }].map((r) => (
+                                            <button key={r.id} type="button" onClick={() => setEditRole(r.id)}
+                                                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem', padding: '0.5rem 0.25rem', borderRadius: '0.625rem', cursor: 'pointer', fontFamily: 'inherit', border: `2px solid ${editRole === r.id ? '#7B1C1C' : '#e2e8f0'}`, background: editRole === r.id ? '#fdf0f0' : 'white' }}>
+                                                <span style={{ fontSize: '1rem' }}>{r.icon}</span>
+                                                <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: editRole === r.id ? '#7B1C1C' : '#374151' }}>{r.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                                 <div style={{ display: 'flex', gap: '0.625rem' }}>
-                                    <button className="btn-secondary" type="button" onClick={() => { setEditing(false); setEditName(student.full_name); setEditTeam(student.team_name) }} style={{ flex: 1, padding: '0.75rem' }}>Cancel</button>
+                                    <button className="btn-secondary" type="button" onClick={() => { setEditing(false); setEditName(student.full_name); setEditTeam(student.team_name); setEditRole(student.role || 'student') }} style={{ flex: 1, padding: '0.75rem' }}>Cancel</button>
                                     <button className="btn-primary" type="button" onClick={handleSaveEdit} disabled={saving} style={{ flex: 1.5, padding: '0.75rem' }}>
                                         {saving
                                             ? <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" opacity="0.3" /><path fill="white" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>

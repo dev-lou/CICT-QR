@@ -138,6 +138,19 @@ export default function Scoreboard() {
         return () => { supabase.removeChannel(ch); clearInterval(poll) }
     }, [fetchTeams])
 
+    // Load initial toggle state from DB on mount (keeps in sync with public view)
+    useEffect(() => {
+        if (!supabase) return
+        supabase.from('scoreboard_settings').select('*').eq('id', 1).single().then(({ data }) => {
+            if (!data) return
+            setHideNames(data.hide_names ?? true)
+            setHideScores(data.hide_scores ?? true)
+            setHideTop2(data.hide_top2 ?? true)
+            setHideBars(data.hide_bars ?? true)
+            setHideAll(data.hide_all ?? false)
+        })
+    }, [])
+
     // Persist toggle state to DB so public /scoreboard stays in sync
     useEffect(() => {
         if (!supabase) return
