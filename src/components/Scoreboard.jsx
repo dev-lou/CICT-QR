@@ -183,12 +183,16 @@ export default function Scoreboard() {
 
     const startReveal = () => {
         setRevealState('countdown'); setCountdown(10)
+        // Persist to DB so public scoreboard syncs
+        if (supabase) supabase.from('scoreboard_settings').upsert({ id: 1, reveal_state: 'countdown', reveal_countdown: 10 }, { onConflict: 'id' }).then(() => { })
         let c = 10
         const t = setInterval(() => {
             c -= 1; setCountdown(c)
+            if (supabase) supabase.from('scoreboard_settings').upsert({ id: 1, reveal_countdown: c }, { onConflict: 'id' }).then(() => { })
             if (c <= 0) {
                 clearInterval(t)
                 setRevealState('winner'); setShowConfetti(true)
+                if (supabase) supabase.from('scoreboard_settings').upsert({ id: 1, reveal_state: 'winner', reveal_countdown: 0 }, { onConflict: 'id' }).then(() => { })
                 const sorted = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
                 const target = sorted[0]?.score ?? 0
                 let cur = 0; const step = Math.ceil(target / 80)
@@ -207,6 +211,11 @@ export default function Scoreboard() {
         // Reveal everything when dismissing winner screen
         setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false); setHideAll(false)
         setShowControls(false)
+        // Reset reveal state in DB so public scoreboard returns to normal
+        if (supabase) supabase.from('scoreboard_settings').upsert({
+            id: 1, reveal_state: 'idle', reveal_countdown: 0,
+            hide_names: false, hide_scores: false, hide_top2: false, hide_bars: false, hide_all: false,
+        }, { onConflict: 'id' }).then(() => { })
     }
 
     const resetToggles = async () => {
