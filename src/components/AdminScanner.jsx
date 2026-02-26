@@ -398,6 +398,55 @@ export default function AdminScanner({ onLogout }) {
         doc.save(`IT-Week-Attendance-${dayFilter}.pdf`)
     }
 
+    const exportStaffLabel = staffDayFilter === 'all' ? 'All Days' : fmtDateFull(staffDayFilter + 'T00:00:00')
+
+    const exportExcelStaff = () => {
+        const rows = filteredStaff.map((r, i) => ({
+            '#': i + 1,
+            'Name': r.students?.full_name || '',
+            'Role': r.students?.role ? r.students.role.charAt(0).toUpperCase() + r.students.role.slice(1) : '',
+            'Team': r.students?.team_name || '',
+            'Date': fmtDate(r.time_in),
+            'Time In': fmtTime(r.time_in),
+            'Time Out': fmtTime(r.time_out),
+            'Status': r.time_out ? 'Checked Out' : 'Present',
+        }))
+        const ws = XLSX.utils.json_to_sheet(rows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Staff Attendance')
+        XLSX.writeFile(wb, `IT-Week-Staff-${staffDayFilter}.xlsx`)
+    }
+
+    const exportPDFStaff = () => {
+        const doc = new jsPDF()
+        doc.setFontSize(16)
+        doc.text('IT Week Staff Event Attendance', 14, 18)
+        doc.setFontSize(10)
+        doc.setTextColor(100)
+        doc.text(`${exportStaffLabel} · Exported ${new Date().toLocaleString('en-PH', { timeZone: TZ })}`, 14, 26)
+        autoTable(doc, {
+            startY: 32,
+            head: [['#', 'Name', 'Role', 'Team', 'Date', 'Time In', 'Time Out', 'Status']],
+            body: filteredStaff.map((r, i) => [
+                i + 1,
+                r.students?.full_name || '',
+                r.students?.role ? r.students.role.charAt(0).toUpperCase() + r.students.role.slice(1) : '',
+                r.students?.team_name || '',
+                fmtDate(r.time_in),
+                fmtTime(r.time_in),
+                fmtTime(r.time_out),
+                r.time_out ? 'Checked Out' : 'Present',
+            ]),
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [123, 28, 28] }, // Maroon for staff
+            alternateRowStyles: { fillColor: [253, 240, 240] },
+        })
+        doc.setFontSize(8)
+        doc.setTextColor(180)
+        doc.text('Built by Lou Vincent Baroro', 14, doc.internal.pageSize.height - 8)
+        doc.save(`IT-Week-Staff-${staffDayFilter}.pdf`)
+    }
+
     // ─── Render ───────────────────────────────────────────────────────────────────
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'inherit' }}>
@@ -844,16 +893,18 @@ export default function AdminScanner({ onLogout }) {
                                             ))}
                                         </div>
                                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                            {staffEventDays.map((d) => (
-                                                <button key={d} onClick={() => setStaffDayFilter(d === staffDayFilter ? 'all' : d)}
-                                                    style={{ padding: '0.35rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', borderColor: staffDayFilter === d ? '#7B1C1C' : '#e2e8f0', background: staffDayFilter === d ? '#fdf0f0' : 'white', color: staffDayFilter === d ? '#7B1C1C' : '#64748b' }}>
-                                                    {fmtDate(d + 'T00:00:00')}
-                                                </button>
-                                            ))}
                                             <button onClick={fetchStaffLogbook}
                                                 style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
                                                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                                                 Refresh
+                                            </button>
+                                            <button onClick={exportExcelStaff} disabled={filteredStaff.length === 0}
+                                                style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: filteredStaff.length === 0 ? '#f1f5f9' : '#dcfce7', border: '1.5px solid', borderColor: filteredStaff.length === 0 ? '#e2e8f0' : '#86efac', color: filteredStaff.length === 0 ? '#94a3b8' : '#16a34a', fontSize: '0.75rem', fontWeight: 700, cursor: filteredStaff.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                                📊 Excel
+                                            </button>
+                                            <button onClick={exportPDFStaff} disabled={filteredStaff.length === 0}
+                                                style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', background: filteredStaff.length === 0 ? '#f1f5f9' : '#fee2e2', border: '1.5px solid', borderColor: filteredStaff.length === 0 ? '#e2e8f0' : '#fca5a5', color: filteredStaff.length === 0 ? '#94a3b8' : '#dc2626', fontSize: '0.75rem', fontWeight: 700, cursor: filteredStaff.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: '34px' }}>
+                                                📄 PDF
                                             </button>
                                         </div>
                                     </div>
