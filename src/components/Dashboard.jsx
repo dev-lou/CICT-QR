@@ -107,8 +107,14 @@ export default function Dashboard({ uuid }) {
                                 <p style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.5rem' }}>{student?.full_name}</p>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
                                     <span className="badge badge-brand">{student?.team_name}</span>
-                                    <span style={{ background: '#fdf0f0', color: '#7B1C1C', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', textTransform: 'capitalize' }}>
-                                        {student?.role === 'leader' ? '⭐ Leader' : student?.role === 'facilitator' ? '🎯 Facilitator' : '🎓 Student'}
+                                    <span style={{ background: '#fdf0f0', color: '#7B1C1C', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', textTransform: 'capitalize', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                        {student?.role === 'leader' ? (
+                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="#C9A84C" stroke="#C9A84C" strokeWidth={1}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>Leader</>
+                                        ) : student?.role === 'facilitator' ? (
+                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>Facilitator</>
+                                        ) : (
+                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" /></svg>Student</>
+                                        )}
                                     </span>
                                 </div>
                                 {editsLeft > 0 && (
@@ -137,13 +143,21 @@ export default function Dashboard({ uuid }) {
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Role</label>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                                        {[{ id: 'student', icon: '🎓', label: 'Student' }, { id: 'leader', icon: '⭐', label: 'Leader' }, { id: 'facilitator', icon: '🎯', label: 'Facilitator' }].map((r) => (
-                                            <button key={r.id} type="button" onClick={() => setEditRole(r.id)}
-                                                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem', padding: '0.5rem 0.25rem', borderRadius: '0.625rem', cursor: 'pointer', fontFamily: 'inherit', border: `2px solid ${editRole === r.id ? '#7B1C1C' : '#e2e8f0'}`, background: editRole === r.id ? '#fdf0f0' : 'white' }}>
-                                                <span style={{ fontSize: '1rem' }}>{r.icon}</span>
-                                                <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: editRole === r.id ? '#7B1C1C' : '#374151' }}>{r.label}</span>
-                                            </button>
-                                        ))}
+                                        {[{ id: 'student', label: 'Student' }, { id: 'leader', label: 'Leader' }, { id: 'facilitator', label: 'Facilitator' }].map((r) => {
+                                            const color = editRole === r.id ? '#7B1C1C' : '#94a3b8'
+                                            const icons = {
+                                                student: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" /></svg>,
+                                                leader: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>,
+                                                facilitator: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>,
+                                            }
+                                            return (
+                                                <button key={r.id} type="button" onClick={() => setEditRole(r.id)}
+                                                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem', padding: '0.5rem 0.25rem', borderRadius: '0.625rem', cursor: 'pointer', fontFamily: 'inherit', border: `2px solid ${editRole === r.id ? '#7B1C1C' : '#e2e8f0'}`, background: editRole === r.id ? '#fdf0f0' : 'white' }}>
+                                                    {icons[r.id]}
+                                                    <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: editRole === r.id ? '#7B1C1C' : '#374151' }}>{r.label}</span>
+                                                </button>
+                                            )
+                                        })}
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.625rem' }}>

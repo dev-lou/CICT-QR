@@ -66,10 +66,7 @@ export default function PublicScoreboard() {
             {/* Header */}
             <div style={{ textAlign: 'center', padding: '2rem 1rem 1.5rem' }}>
                 {/* CICT Logo */}
-                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '4rem', height: '4rem', borderRadius: '50%', background: 'linear-gradient(135deg, #7B1C1C, #C9A84C)', marginBottom: '1rem', flexDirection: 'column', gap: '1px', boxShadow: '0 0 32px rgba(201,168,76,0.3)' }}>
-                    <span style={{ color: 'white', fontWeight: 900, fontSize: '0.875rem', letterSpacing: '0.05em' }}>CICT</span>
-                    <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontSize: '0.4375rem', letterSpacing: '0.08em' }}>ISUFST</span>
-                </div>
+                <img src="/logo.png" alt="CICT Logo" style={{ display: 'block', margin: '0 auto', width: '4rem', height: '4rem', borderRadius: '50%', objectFit: 'cover', marginBottom: '1rem', boxShadow: '0 0 32px rgba(201,168,76,0.3)' }} />
                 <h1 style={{ fontSize: 'clamp(1.5rem, 5vw, 2.5rem)', fontWeight: 900, letterSpacing: '-0.03em', background: 'linear-gradient(135deg, #C9A84C, #f0d080)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
                     IT Week 2026
                 </h1>
@@ -81,15 +78,19 @@ export default function PublicScoreboard() {
                 <AnimatePresence>
                     {hide_all ? (
                         <motion.div key="hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                            style={{ textAlign: 'center', padding: '4rem 1rem', color: 'rgba(255,255,255,0.25)', fontSize: '1rem' }}>
-                            🔒 Scoreboard is currently hidden
+                            style={{ textAlign: 'center', padding: '4rem 1rem', color: 'rgba(255,255,255,0.25)', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+                            Scoreboard is currently hidden
                         </motion.div>
                     ) : sorted.map((team, index) => {
                         const score = team.score ?? 0
                         const pct = Math.max(4, (score / maxScore) * 100)
                         const isTop = index === 0
                         const isHiddenTop = hide_top2 && index < 2
-                        const medals = ['🥇', '🥈', '🥉']
+                        const rankColors = ['#C9A84C', '#94a3b8', '#cd7f32']
+                        const rankBadge = index < 3
+                            ? <span style={{ width: '1.75rem', height: '1.75rem', borderRadius: '50%', background: `${rankColors[index]}18`, border: `1.5px solid ${rankColors[index]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.75rem', color: rankColors[index], flexShrink: 0, filter: isHiddenTop ? 'blur(4px)' : 'none', transition: 'filter 0.3s' }}>{index + 1}</span>
+                            : <span style={{ width: '1.75rem', height: '1.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.6875rem', color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>#{index + 1}</span>
 
                         return (
                             <motion.div key={team.id}
@@ -105,7 +106,7 @@ export default function PublicScoreboard() {
                                     padding: '1rem 1.25rem',
                                 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: hide_bars ? 0 : '0.625rem' }}>
-                                    <span style={{ fontSize: '1.25rem', flexShrink: 0, filter: isHiddenTop ? 'blur(4px)' : 'none', transition: 'filter 0.3s' }}>{medals[index] ?? `#${index + 1}`}</span>
+                                    {rankBadge}
                                     <span style={{ flex: 1, fontWeight: 700, fontSize: '1rem', color: (hide_names || isHiddenTop) ? 'transparent' : isTop ? '#f0d080' : 'white', filter: (hide_names || isHiddenTop) ? 'blur(6px)' : 'none', transition: 'filter 0.3s', userSelect: (hide_names || isHiddenTop) ? 'none' : undefined }}>
                                         {team.name}
                                     </span>
@@ -129,9 +130,10 @@ export default function PublicScoreboard() {
                 </AnimatePresence>
             </div>
 
-            <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: 'rgba(255,255,255,0.2)', marginTop: '2rem' }}>
-                🔴 Live · Updates automatically
+            <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: 'rgba(255,255,255,0.2)', marginTop: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', display: 'inline-block' }} />
+                Live · Updates automatically
             </p>
-        </div>
+        </div >
     )
 }

@@ -123,8 +123,9 @@ export default function LogbookPage({ uuid }) {
                         </svg>
                     </button>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontWeight: 800, fontSize: '0.9375rem', color: '#0f172a', lineHeight: 1.2 }}>
-                            {myRole === 'leader' || myRole === 'facilitator' ? '📋 Staff Logbook' : '📋 Attendance Logbook'}
+                        <p style={{ fontWeight: 800, fontSize: '0.9375rem', color: '#0f172a', lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
+                            {myRole === 'leader' || myRole === 'facilitator' ? 'Staff Logbook' : 'Attendance Logbook'}
                         </p>
                         {myStudent && (
                             <p style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>
