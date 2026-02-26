@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 
-const BASE_SCORE = 150
-
 export default function PublicScoreboard() {
     const [teams, setTeams] = useState([])
     const [settings, setSettings] = useState({
@@ -50,7 +48,7 @@ export default function PublicScoreboard() {
     }, [])
 
     const sorted = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-    const maxScore = Math.max(...sorted.map(t => (t.score ?? 0) + BASE_SCORE), BASE_SCORE + 1)
+    const maxScore = Math.max(...sorted.map(t => t.score ?? 0), 1)
     const { hide_names, hide_scores, hide_bars, hide_top2, hide_all } = settings
 
     if (loading) {
@@ -88,7 +86,7 @@ export default function PublicScoreboard() {
                         </motion.div>
                     ) : sorted.map((team, index) => {
                         if (hide_top2 && index < 2) return null
-                        const score = (team.score ?? 0) + BASE_SCORE
+                        const score = team.score ?? 0
                         const pct = Math.max(4, (score / maxScore) * 100)
                         const isTop = index === 0
                         const medals = ['🥇', '🥈', '🥉']
