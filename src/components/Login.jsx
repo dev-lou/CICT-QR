@@ -109,6 +109,28 @@ export default function Login({ onLogin, onGoRegister }) {
                             Register
                         </button>
                     </p>
+
+                    {/* Download App Button */}
+                    <div style={{ marginTop: '1.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem', textAlign: 'center' }}>
+                        <a
+                            href="/it-week-attendance.apk"
+                            download="IT_Week_Attendance.apk"
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                                background: '#1e293b', color: 'white', padding: '0.875rem 1.25rem', borderRadius: '0.75rem',
+                                textDecoration: 'none', fontWeight: 600, fontSize: '0.9375rem',
+                                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                                transition: 'transform 0.15s ease'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download Android App
+                        </a>
+                    </div>
                 </motion.div>
             </div>
             <p style={{ position: 'fixed', bottom: '1rem', left: 0, right: 0, textAlign: 'center', fontSize: '0.6875rem', color: '#94a3b8', pointerEvents: 'none' }}>Built by Lou Vincent Baroro</p>
