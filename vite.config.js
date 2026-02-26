@@ -11,22 +11,43 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png'],
       manifest: {
-        name: 'IT Week 2026 QR System',
+        id: 'com.isufst.cict.qr',
+        name: 'IT Week 2026 QR Attendance System',
         short_name: 'IT Week QR',
-        description: 'ISUFST CICT IT Week 2026 QR Attendance and Scoreboard System',
+        description: 'ISUFST CICT IT Week 2026 QR Attendance and Live Scoreboard System',
         theme_color: '#800000',
         background_color: '#ffffff',
         display: 'standalone',
+        orientation: 'portrait',
+        categories: ['education', 'productivity', 'events'],
         icons: [
           {
             src: 'logo.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           },
           {
             src: 'logo.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
+          }
+        ],
+        screenshots: [
+          {
+            src: 'logo.png',
+            sizes: '512x512',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Home Screen'
+          },
+          {
+            src: 'logo.png',
+            sizes: '512x512',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'Mobile View'
           }
         ]
       }
