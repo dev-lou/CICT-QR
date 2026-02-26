@@ -134,19 +134,7 @@ export default function Login({ onLogin, onGoRegister }) {
                 </motion.div>
             </div>
 
-            {/* Footer with built by and subtle admin link */}
-            <div style={{ position: 'fixed', bottom: '1rem', left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', fontSize: '0.6875rem' }}>
-                <p style={{ color: '#94a3b8', margin: 0 }}>Built by Lou Vincent Baroro</p>
-                <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#cbd5e1' }} />
-                <a
-                    href="/admin"
-                    style={{ color: '#94a3b8', textDecoration: 'none', transition: 'color 0.15s ease' }}
-                    onMouseOver={(e) => e.currentTarget.style.color = '#64748b'}
-                    onMouseOut={(e) => e.currentTarget.style.color = '#94a3b8'}
-                >
-                    Admin Access
-                </a>
-            </div>
+            <p style={{ position: 'fixed', bottom: '1rem', left: 0, right: 0, textAlign: 'center', fontSize: '0.6875rem', color: '#94a3b8', pointerEvents: 'none' }}>Built by Lou Vincent Baroro</p>
         </>
     )
 }
