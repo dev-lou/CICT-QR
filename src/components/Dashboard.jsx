@@ -167,32 +167,32 @@ export default function Dashboard({ uuid }) {
                             </svg>
                         </div>
 
-                        {/* Standing Vintage Film Camera (Fixed Geometry and Overlap) */}
-                        <div style={{ position: 'absolute', top: '5.5rem', left: '1rem', opacity: 0.22, pointerEvents: 'none', zIndex: 10 }}>
+                        {/* Standing Vintage Film Camera (moved to left side) */}
+                        <div style={{ position: 'absolute', top: '4rem', left: '1rem', opacity: 0.22, pointerEvents: 'none', zIndex: 10, transform: 'rotate(25deg)' }}>
                             <svg width="100" height="110" viewBox="0 0 100 110" fill="none" stroke="#C9A84C" strokeWidth="2.5">
-                                {/* Diagonal / Staggered Reels */}
-                                <circle cx="35" cy="45" r="20" strokeOpacity="1" />
-                                <circle cx="35" cy="45" r="5" fill="#C9A84C" fillOpacity="0.8" />
-                                <path d="M35 25 V65 M15 45 H55" strokeWidth="1" strokeOpacity="0.4" />
+                                {/* Symmetrically aligned reels above body */}
+                                <circle cx="30" cy="30" r="20" strokeOpacity="1" />
+                                <circle cx="30" cy="30" r="5" fill="#C9A84C" fillOpacity="0.8" />
+                                <path d="M30 10 V50 M10 30 H50" strokeWidth="1" strokeOpacity="0.4" />
 
-                                <circle cx="65" cy="25" r="20" strokeOpacity="1" />
-                                <circle cx="65" cy="25" r="5" fill="#C9A84C" fillOpacity="0.8" />
-                                <path d="M65 5 V45 M45 25 H85" strokeWidth="1" strokeOpacity="0.4" />
+                                <circle cx="70" cy="30" r="20" strokeOpacity="1" />
+                                <circle cx="70" cy="30" r="5" fill="#C9A84C" fillOpacity="0.8" />
+                                <path d="M70 10 V50 M50 30 H90" strokeWidth="1" strokeOpacity="0.4" />
 
-                                {/* Camera Body (Solid attachment to reels) */}
-                                <rect x="20" y="65" width="50" height="35" rx="4" strokeOpacity="1" />
-                                <rect x="30" y="75" width="30" height="15" rx="2" strokeOpacity="0.4" strokeWidth="1.5" />
+                                {/* Vertical camera body */}
+                                <rect x="32.5" y="55" width="35" height="50" rx="4" strokeOpacity="1" />
+                                <rect x="37.5" y="65" width="25" height="20" rx="2" strokeOpacity="0.4" strokeWidth="1.5" />
 
                                 {/* Conical Lens Projection */}
-                                <path d="M70 75 L95 65 L95 105 L70 95 Z" strokeOpacity="1" strokeLinejoin="round" />
-                                <path d="M85 71 V99" strokeWidth="1.5" strokeOpacity="0.4" />
+                                <path d="M67.5 75 L92.5 65 L92.5 105 L67.5 95 Z" strokeOpacity="1" strokeLinejoin="round" />
+                                <path d="M82.5 71 V99" strokeWidth="1.5" strokeOpacity="0.4" />
                             </svg>
                         </div>
 
-                        {/* Hackathon / Coding Pattern (Bottom Left) */}
-                        <div style={{ position: 'absolute', bottom: '1.25rem', left: '1.25rem', opacity: 0.22, pointerEvents: 'none', zIndex: 10, fontFamily: '"JetBrains Mono", monospace' }}>
+                        {/* Hackathon / Coding Pattern (Bottom-left, horizontal for readability) */}
+                        <div style={{ position: 'absolute', bottom: '1rem', left: '1rem', opacity: 0.22, pointerEvents: 'none', zIndex: 10, fontFamily: '"JetBrains Mono", monospace', transform: 'rotate(0deg)' }}>
                             <svg width="130" height="90" viewBox="0 0 130 90" fill="#C9A84C">
-                                <text x="0" y="15" fontSize="10" fontWeight="900" style={{ letterSpacing: '2px' }}>0xDEADBEEF</text>
+                                <text x="0" y="15" fontSize="10" fontWeight="900" style={{ letterSpacing: '2px' }}>sleep</text>
                                 <text x="0" y="30" fontSize="11" fontWeight="900" opacity="0.8">{'{ HACK_IT_2026 }'}</text>
                                 <text x="0" y="45" fontSize="10" fontWeight="900">while(coding)</text>
                                 <text x="10" y="60" fontSize="10" fontWeight="900" opacity="0.7">coffee++;</text>
@@ -200,8 +200,8 @@ export default function Dashboard({ uuid }) {
                             </svg>
                         </div>
 
-                        {/* Film Strip / Action Pattern (Bottom Right - Fixed Clipping) */}
-                        <div style={{ position: 'absolute', bottom: '1.5rem', right: '0.5rem', opacity: 0.2, pointerEvents: 'none', zIndex: 10, transform: 'rotate(5deg)' }}>
+                        {/* Film Strip / Action Pattern (Raised a bit more and tilted) */}
+                        <div style={{ position: 'absolute', bottom: '3.8rem', right: '0.5rem', opacity: 0.2, pointerEvents: 'none', zIndex: 10, transform: 'rotate(-60deg)' }}>
                             <svg width="150" height="40" viewBox="0 0 150 40" fill="none" stroke="#C9A84C" strokeWidth="2">
                                 <rect x="0" y="5" width="150" height="30" rx="3" strokeOpacity="0.6" />
                                 {[...Array(9)].map((_, i) => (
