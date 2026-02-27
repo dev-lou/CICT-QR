@@ -1,14 +1,8 @@
-[
-    {
-        "relation": [
-            "delegate_permission/common.handle_all_urls"
-        ],
-        "target": {
-            "namespace": "android_app",
-            "package_name": "app.vercel.cict_qr.twa",
-            "sha256_cert_fingerprints": [
-                "38:64:BE:69:78:0B:C6:F2:A7:C5:8E:B9:75:BA:E6:F4:79:75:13:25:C0:FF:CC:23:9B:8C:D5:FE:54:4D:E3:C9"
-            ]
-        }
-    }
-]
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.isufstcict.qr.twa",
+        "sha256_cert_fingerprints": ["34:D5:61:5D:1D:6D:7D:B7:CC:E3:13:90:14:D4:BB:5E:77:1F:5C:AF:0C:29:54:7E:78:E7:4E:4A:4A:0C:82:24"]
+      }
+    }]

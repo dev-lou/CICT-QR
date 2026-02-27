@@ -18,6 +18,16 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const html5QrCodeRef = useRef(null)
     const processingRef = useRef(false)
 
+    // queue for batching scans
+    const scanQueueRef = useRef([])            // array of uuid strings
+    const [queueSize, setQueueSize] = useState(0)
+    const [queuedItems, setQueuedItems] = useState([]) // snapshot for UI
+    const queueFlushInterval = useRef(null)
+
+    // helpers used by realtime subscriptions to debounce reloads
+    const logUpdateTimeoutRef = useRef(null)
+    const staffUpdateTimeoutRef = useRef(null)
+
     const [scanModal, setScanModal] = useState(null) // { type, name, message }
 
     // Synthetic scanner beep using Web Audio API
@@ -96,7 +106,9 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         const channel = supabase
             .channel('logbook-changes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'logbook' }, () => {
-                fetchLogbook()
+                // debounce rapid bursts of events
+                if (logUpdateTimeoutRef.current) clearTimeout(logUpdateTimeoutRef.current)
+                logUpdateTimeoutRef.current = setTimeout(fetchLogbook, 500)
             })
             .subscribe()
         return () => { supabase.removeChannel(channel) }
@@ -134,7 +146,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         const channel = supabase
             .channel('staff-logbook-changes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_logbook' }, () => {
-                fetchStaffLogbook()
+                if (staffUpdateTimeoutRef.current) clearTimeout(staffUpdateTimeoutRef.current)
+                staffUpdateTimeoutRef.current = setTimeout(fetchStaffLogbook, 500)
             })
             .subscribe()
         return () => { supabase.removeChannel(channel) }
@@ -161,9 +174,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     }, [fetchLogbook, fetchStaffLogbook, fetchStats])
 
     // ─── Scanner ─────────────────────────────────────────────────────────────────
-    const handleScan = useCallback(async (decodedText) => {
-        if (processingRef.current) return
-        processingRef.current = true
+    // original scan handler, kept around for flushing the queue
+    const handleScanImmediate = useCallback(async (decodedText) => {
         const scannedUuid = decodedText.trim()
         try {
             const { data: student, error: studentErr } = await supabase
@@ -221,6 +233,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
     }, [mode])
 
+    // push decoded text into a queue for later processing; immediate beep for feedback
+    const handleScan = useCallback((decodedText) => {
+        const uuid = decodedText.trim()
+        scanQueueRef.current.push(uuid)
+        setQueueSize(scanQueueRef.current.length)
+        setQueuedItems([...scanQueueRef.current])
+        playBeep()
+    }, [playBeep])
+
     const startScanner = useCallback(async () => {
         if (html5QrCodeRef.current) return
         try {
@@ -239,6 +260,23 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             html5QrCodeRef.current = null; setScanning(false)
         }
     }, [])
+
+    // start a periodic flush of the scan queue
+    useEffect(() => {
+        queueFlushInterval.current = setInterval(async () => {
+            if (scanQueueRef.current.length === 0) return
+            const batch = scanQueueRef.current.splice(0)
+            setQueueSize(scanQueueRef.current.length)
+            setQueuedItems([...scanQueueRef.current])
+            // process sequentially for now; could be sent to an edge function
+            for (const txt of batch) {
+                await handleScanImmediate(txt)
+            }
+        }, 1000)
+        return () => {
+            clearInterval(queueFlushInterval.current)
+        }
+    }, [handleScanImmediate])
 
     useEffect(() => () => { if (html5QrCodeRef.current) html5QrCodeRef.current.stop().catch(() => { }) }, [])
 
@@ -494,13 +532,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
                             {/* Student name */}
                             {scanModal.name && (
-                                <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em', marginBottom: '0.5rem', lineHeight: 1.2 }}>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em', marginBottom: '0.5rem', lineHeight: 1.2 }}>
                                     {scanModal.name}
-                                </p>
+                                </div>
                             )}
 
                             {/* Message */}
-                            <p style={{
+                            <div style={{
                                 fontSize: '1rem', fontWeight: 600, marginBottom: '1.75rem',
                                 color: scanModal.type === 'success' ? '#16a34a'
                                     : scanModal.type === 'warning' ? '#ca8a04'
@@ -508,7 +546,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                             : '#dc2626',
                             }}>
                                 {scanModal.message}
-                            </p>
+                            </div>
 
                             {/* OK button */}
                             <motion.button
@@ -549,13 +587,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         </div>
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <p style={{ fontSize: '0.9375rem', fontWeight: 900, color: 'white', letterSpacing: '0.02em', lineHeight: 1, margin: 0 }}>ATTENDANCE SCANNER</p>
+                                <div style={{ fontSize: '0.9375rem', fontWeight: 900, color: 'white', letterSpacing: '0.02em', lineHeight: 1, margin: 0 }}>ATTENDANCE SCANNER</div>
                                 <div className="mobile-hide" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', background: 'rgba(16, 185, 129, 0.1)', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
                                     <div className="pulse-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} />
                                     <span style={{ color: '#10b981', fontSize: '0.55rem', fontWeight: 900, letterSpacing: '0.05em' }}>ACTIVE</span>
                                 </div>
                             </div>
-                            <p style={{ fontSize: '0.625rem', color: '#C9A84C', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0.125rem 0 0' }}>Manage Student & Staff Attendance</p>
+                            <div style={{ fontSize: '0.625rem', color: '#C9A84C', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0.125rem 0 0' }}>Manage Student & Staff Attendance</div>
                         </div>
                     </div>
                     <div style={{ position: 'relative' }}>
@@ -629,6 +667,10 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             id: 'staff', label: 'Staff',
                             icon: <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
                         },
+                        {
+                            id: 'pending', label: queueSize > 0 ? `Queue (${queueSize})` : 'Queue',
+                            icon: <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z" /></svg>
+                        },
                     ].map((tab) => (
                         <button key={tab.id} className={`tab-btn-luxury ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
                             {tab.icon}
@@ -651,11 +693,11 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             <div className="luxury-card" style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
                                     <div>
-                                        <p style={{ fontWeight: 800, color: 'white', fontSize: '1rem', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                                        <div style={{ fontWeight: 800, color: 'white', fontSize: '1rem', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                                             <div style={{ width: '4px', height: '1.125rem', background: '#C9A84C', borderRadius: '2px' }} />
                                             SELECT ACTION
-                                        </p>
-                                        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8125rem', fontWeight: 600 }}>{mode === 'time-in' ? 'Ready to Check Students In' : 'Ready to Check Students Out'}</p>
+                                        </div>
+                                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8125rem', fontWeight: 600 }}>{mode === 'time-in' ? 'Ready to Check Students In' : 'Ready to Check Students Out'}</div>
                                     </div>
                                 </div>
                                 <div className="mode-toggle" style={{ width: '100%', gap: '0.5rem', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '1rem' }}>
@@ -687,8 +729,9 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                 <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.1)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                         <div className={scanning ? "live-indicator" : ""} style={{ width: 10, height: 10, borderRadius: '50%', background: scanning ? '#C9A84C' : 'rgba(255,255,255,0.1)' }} />
-                                        <span style={{ fontSize: '0.875rem', fontWeight: 800, color: scanning ? '#C9A84C' : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        <span style={{ fontSize: '0.875rem', fontWeight: 800, color: scanning ? '#C9A84C' : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                                             {scanning ? 'Scanner Active' : 'Scanner Idle'}
+                                            {queueSize > 0 && <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#C9A84C' }}>{queueSize} pending</span>}
                                         </span>
                                     </div>
                                     <button
@@ -712,7 +755,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                     <circle cx="12" cy="13" r="3" />
                                                 </svg>
                                             </div>
-                                            <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600, letterSpacing: '0.02em' }}>Waiting for a scan...</p>
+                                            <div style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600, letterSpacing: '0.02em' }}>Waiting for a scan...</div>
                                         </div>
                                     )}
                                 </div>
@@ -722,7 +765,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             {logbook.length > 0 && (
                                 <div className="luxury-card" style={{ padding: '1.5rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-                                        <p style={{ fontWeight: 900, color: 'white', fontSize: '0.8125rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>RECENT SCANS</p>
+                                        <div style={{ fontWeight: 900, color: 'white', fontSize: '0.8125rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>RECENT SCANS</div>
                                         <button onClick={() => setActiveTab('logbook')} style={{ fontSize: '0.75rem', color: '#C9A84C', fontWeight: 800, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                             VIEW ALL LOGS →
                                         </button>
@@ -739,8 +782,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                         {row.time_out ? 'OUT' : 'IN'}
                                                     </div>
                                                     <div>
-                                                        <p style={{ fontWeight: 700, fontSize: '0.875rem', color: 'white', lineHeight: 1.2 }}>{row.students?.full_name}</p>
-                                                        <p style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{row.students?.team_name}</p>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'white', lineHeight: 1.2 }}>{row.students?.full_name}</div>
+                                                        <div style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{row.students?.team_name}</div>
                                                     </div>
                                                 </div>
                                                 <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
@@ -771,8 +814,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                             <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d={s.icon} /></svg>
                                         </div>
                                         <div>
-                                            <p style={{ margin: 0, fontSize: '0.6875rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</p>
-                                            <p style={{ margin: 0, fontSize: '1.75rem', fontWeight: 900, color: 'white', letterSpacing: '-0.02em' }}>{s.value}</p>
+                                            <div style={{ margin: 0, fontSize: '0.6875rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</div>
+                                            <div style={{ margin: 0, fontSize: '1.75rem', fontWeight: 900, color: 'white', letterSpacing: '-0.02em' }}>{s.value}</div>
                                         </div>
                                     </div>
                                 ))}
@@ -781,7 +824,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             {/* Day selector tabs */}
                             {eventDays.length > 0 && (
                                 <div className="luxury-card" style={{ padding: '1.25rem' }}>
-                                    <p style={{ fontSize: '0.6875rem', fontWeight: 900, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.875rem' }}>FILTER BY DATE</p>
+                                    <div style={{ fontSize: '0.6875rem', fontWeight: 900, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.875rem' }}>FILTER BY DATE</div>
                                     <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
                                         <button onClick={() => setDayFilter('all')}
                                             style={{
@@ -842,12 +885,12 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                 {logLoading ? (
                                     <div style={{ padding: '5rem 2rem', textAlign: 'center' }}>
                                         <div className="skeleton-gold" style={{ width: '3rem', height: '3rem', borderRadius: '50%', margin: '0 auto 1.5rem' }} />
-                                        <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#C9A84C', letterSpacing: '0.1em' }}>LOADING RECORDS...</p>
+                                        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#C9A84C', letterSpacing: '0.1em' }}>LOADING RECORDS...</div>
                                     </div>
                                 ) : filteredLog.length === 0 ? (
                                     <div style={{ padding: '5rem 2rem', textAlign: 'center' }}>
-                                        <p style={{ fontSize: '1.125rem', fontWeight: 900, color: 'white', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>NO RECORDS FOUND</p>
-                                        <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>No entry records detected for this day.</p>
+                                        <div style={{ fontSize: '1.125rem', fontWeight: 900, color: 'white', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>NO RECORDS FOUND</div>
+                                        <div style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>No entry records detected for this day.</div>
                                     </div>
                                 ) : (
                                     <>
@@ -872,8 +915,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                         <motion.tr key={row.id || `empty-std-${i}`} className="luxury-table-row" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.015, 0.3) }}>
                                                             <td style={{ padding: '1.25rem 1.5rem', fontWeight: 900, color: 'rgba(255,255,255,0.2)', fontSize: '0.75rem' }}>{globalIndex}</td>
                                                             <td style={{ padding: '1.25rem 1.5rem' }}>
-                                                                <p style={{ fontWeight: 800, color: 'white', fontSize: '0.9375rem' }}>{row.students?.full_name}</p>
-                                                                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{fmtDate(row.time_in)}</p>
+                                                                <div style={{ fontWeight: 800, color: 'white', fontSize: '0.9375rem' }}>{row.students?.full_name}</div>
+                                                                <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{fmtDate(row.time_in)}</div>
                                                             </td>
                                                             <td style={{ padding: '1.25rem 1.5rem' }}>
                                                                 <span style={{ background: 'rgba(99, 102, 241, 0.1)', color: '#818cf8', fontSize: '0.6875rem', fontWeight: 900, padding: '0.35rem 0.75rem', borderRadius: '6px', border: '1px solid rgba(99, 102, 241, 0.15)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -916,8 +959,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                         style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '1.25rem', padding: '1.25rem' }}>
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                                                             <div>
-                                                                <p style={{ fontWeight: 900, color: 'white', fontSize: '1rem', letterSpacing: '-0.01em' }}>{row.students?.full_name}</p>
-                                                                <p style={{ fontSize: '0.75rem', color: '#C9A84C', fontWeight: 800 }}>{row.students?.team_name?.toUpperCase()}</p>
+                                                                <div style={{ fontWeight: 900, color: 'white', fontSize: '1rem', letterSpacing: '-0.01em' }}>{row.students?.full_name}</div>
+                                                                <div style={{ fontSize: '0.75rem', color: '#C9A84C', fontWeight: 800 }}>{row.students?.team_name?.toUpperCase()}</div>
                                                             </div>
                                                             <div style={{
                                                                 padding: '0.35rem 0.75rem', borderRadius: '99px', fontSize: '0.625rem', fontWeight: 900, textTransform: 'uppercase',
@@ -930,15 +973,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                         </div>
                                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '0.875rem' }}>
                                                             <div>
-                                                                <p style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>ACCESS TIME</p>
-                                                                <p style={{ fontSize: '0.875rem', fontWeight: 800, color: 'white' }}>{fmtTime(row.time_in)}</p>
+                                                                <div style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>ACCESS TIME</div>
+                                                                <div style={{ fontSize: '0.875rem', fontWeight: 800, color: 'white' }}>{fmtTime(row.time_in)}</div>
                                                             </div>
                                                             <div>
-                                                                <p style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>EXIT TIME</p>
-                                                                <p style={{ fontSize: '0.875rem', fontWeight: 800, color: row.time_out ? 'white' : 'rgba(255,255,255,0.1)' }}>{row.time_out ? fmtTime(row.time_out) : '--:--'}</p>
+                                                                <div style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>EXIT TIME</div>
+                                                                <div style={{ fontSize: '0.875rem', fontWeight: 800, color: row.time_out ? 'white' : 'rgba(255,255,255,0.1)' }}>{row.time_out ? fmtTime(row.time_out) : '--:--'}</div>
                                                             </div>
                                                         </div>
-                                                        <p style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700, marginTop: '0.875rem', textAlign: 'right' }}>{fmtDateFull(row.time_in)}</p>
+                                                        <div style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700, marginTop: '0.875rem', textAlign: 'right' }}>{fmtDateFull(row.time_in)}</div>
                                                     </motion.div>
                                                 ))}
                                                 {/* Placeholders */}
@@ -989,7 +1032,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             {/* Staff Day selector tabs */}
                             {staffEventDays.length > 0 && (
                                 <div className="luxury-card pattern-circuits" style={{ padding: '1.25rem' }}>
-                                    <p style={{ fontSize: '0.6875rem', fontWeight: 900, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.875rem' }}>FILTER BY DATE</p>
+                                    <div style={{ fontSize: '0.6875rem', fontWeight: 900, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.875rem' }}>FILTER BY DATE</div>
                                     <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
                                         <button onClick={() => setStaffDayFilter('all')}
                                             style={{
@@ -1046,12 +1089,12 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             <div className="luxury-card">
                                 {staffLogLoading ? (
                                     <div style={{ padding: '5rem 2rem', textAlign: 'center' }}>
-                                        <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#C9A84C', letterSpacing: '0.1em' }}>DECRYPTING STAFF ARCHIVE...</p>
+                                        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#C9A84C', letterSpacing: '0.1em' }}>DECRYPTING STAFF ARCHIVE...</div>
                                     </div>
                                 ) : filteredStaff.length === 0 ? (
                                     <div style={{ padding: '5rem 2rem', textAlign: 'center' }}>
-                                        <p style={{ fontSize: '1.125rem', fontWeight: 900, color: 'white', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>NO RECORDS FOUND</p>
-                                        <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>No staff activity detected for this day.</p>
+                                        <div style={{ fontSize: '1.125rem', fontWeight: 900, color: 'white', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>NO RECORDS FOUND</div>
+                                        <div style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>No staff activity detected for this day.</div>
                                     </div>
                                 ) : (
                                     <>
@@ -1077,8 +1120,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                         <motion.tr key={row.id || `empty-stf-${i}`} className="luxury-table-row" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.015, 0.3) }}>
                                                             <td style={{ padding: '1.25rem 1.5rem', fontWeight: 900, color: 'rgba(255,255,255,0.2)', fontSize: '0.75rem' }}>{globalIndex}</td>
                                                             <td style={{ padding: '1.25rem 1.5rem' }}>
-                                                                <p style={{ fontWeight: 800, color: 'white', fontSize: '0.9375rem' }}>{row.students?.full_name}</p>
-                                                                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{fmtDate(row.time_in)}</p>
+                                                                <div style={{ fontWeight: 800, color: 'white', fontSize: '0.9375rem' }}>{row.students?.full_name}</div>
+                                                                <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{fmtDate(row.time_in)}</div>
                                                             </td>
                                                             <td style={{ padding: '1.25rem 1.5rem' }}>
                                                                 <span style={{ background: `${roleColor}10`, color: roleColor, fontSize: '0.6875rem', fontWeight: 900, padding: '0.35rem 0.75rem', borderRadius: '6px', border: `1px solid ${roleColor}20`, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -1128,7 +1171,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                             style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '1.25rem', padding: '1.25rem' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                                                                 <div>
-                                                                    <p style={{ fontWeight: 900, color: 'white', fontSize: '1rem', letterSpacing: '-0.01em' }}>{row.students?.full_name}</p>
+                                                                    <div style={{ fontWeight: 900, color: 'white', fontSize: '1rem', letterSpacing: '-0.01em' }}>{row.students?.full_name}</div>
                                                                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                                                                         <span style={{ color: roleColor, fontSize: '0.625rem', fontWeight: 900, textTransform: 'uppercase' }}>{row.students?.role}</span>
                                                                         <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.625rem', fontWeight: 800 }}>•</span>
@@ -1146,15 +1189,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                             </div>
                                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '0.875rem' }}>
                                                                 <div>
-                                                                    <p style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>ACCESS TIME</p>
-                                                                    <p style={{ fontSize: '0.875rem', fontWeight: 800, color: 'white' }}>{fmtTime(row.time_in)}</p>
+                                                                    <div style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>ACCESS TIME</div>
+                                                                    <div style={{ fontSize: '0.875rem', fontWeight: 800, color: 'white' }}>{fmtTime(row.time_in)}</div>
                                                                 </div>
                                                                 <div>
-                                                                    <p style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>EXIT TIME</p>
-                                                                    <p style={{ fontSize: '0.875rem', fontWeight: 800, color: row.time_out ? 'white' : 'rgba(255,255,255,0.1)' }}>{row.time_out ? fmtTime(row.time_out) : '--:--'}</p>
+                                                                    <div style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>EXIT TIME</div>
+                                                                    <div style={{ fontSize: '0.875rem', fontWeight: 800, color: row.time_out ? 'white' : 'rgba(255,255,255,0.1)' }}>{row.time_out ? fmtTime(row.time_out) : '--:--'}</div>
                                                                 </div>
                                                             </div>
-                                                            <p style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700, marginTop: '0.875rem', textAlign: 'right' }}>{fmtDateFull(row.time_in)}</p>
+                                                            <div style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700, marginTop: '0.875rem', textAlign: 'right' }}>{fmtDateFull(row.time_in)}</div>
                                                         </motion.div>
                                                     )
                                                 })}
@@ -1193,6 +1236,25 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                             </div>
                                         )}
                                     </>
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {/* ── PENDING QUEUE TAB ────────────────────────────────── */}
+                    {activeTab === 'pending' && (
+                        <motion.div key="pending" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                            style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            <div className="luxury-card" style={{ padding: '1.25rem' }}>
+                                <div style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'white' }}>Pending Scans ({queueSize})</div>
+                                {queuedItems.length === 0 ? (
+                                    <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.4)' }}>No pending scans</div>
+                                ) : (
+                                    <ul style={{ marginTop: '1rem', listStyle: 'none', padding: 0, maxHeight: '300px', overflowY: 'auto' }}>
+                                        {queuedItems.map((u,i)=>(
+                                            <li key={i} style={{ padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.875rem' }}>{u}</li>
+                                        ))}
+                                    </ul>
                                 )}
                             </div>
                         </motion.div>
