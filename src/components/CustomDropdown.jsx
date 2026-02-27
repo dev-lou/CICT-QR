@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export default function CustomDropdown({ value, options, onChange, placeholder = 'Select an option', label }) {
+export default function CustomDropdown({ value, options, onChange, placeholder = 'Select an option', label, dark = false, fontSize = '0.9375rem' }) {
     const [isOpen, setIsOpen] = useState(false)
     const dropdownRef = useRef(null)
 
@@ -20,7 +20,15 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
     return (
         <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
             {label && (
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
+                <label style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    color: dark ? '#C9A84C' : '#374151',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    marginBottom: '0.5rem'
+                }}>
                     {label}
                 </label>
             )}
@@ -30,29 +38,45 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
                 onClick={() => setIsOpen(!isOpen)}
                 style={{
                     width: '100%',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '0.875rem',
-                    border: isOpen ? '1.5px solid #7B1C1C' : '1.5px solid #e2e8f0',
-                    background: '#ffffff',
+                    padding: '0.8125rem 1rem',
+                    borderRadius: '1rem',
+                    border: '1.5px solid',
+                    borderColor: isOpen
+                        ? (dark ? '#C9A84C' : '#7B1C1C')
+                        : (dark ? 'rgba(255,255,255,0.1)' : '#e2e8f0'),
+                    background: dark ? 'rgba(255,255,255,0.03)' : '#ffffff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     cursor: 'pointer',
-                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                    boxShadow: isOpen ? '0 0 0 3px rgba(123, 28, 28, 0.1)' : 'none',
-                    textAlign: 'left'
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxShadow: isOpen
+                        ? (dark ? '0 0 20px rgba(201,168,76,0.15)' : '0 0 0 3px rgba(123, 28, 28, 0.1)')
+                        : 'none',
+                    textAlign: 'left',
+                    color: dark ? 'white' : '#0f172a'
                 }}
             >
                 <span style={{
-                    fontSize: '0.9375rem',
-                    color: selectedOption ? '#0f172a' : '#94a3b8',
-                    fontWeight: selectedOption ? 600 : 400
+                    fontSize: fontSize,
+                    color: selectedOption
+                        ? (dark ? 'white' : '#0f172a')
+                        : (dark ? 'rgba(255,255,255,0.3)' : '#94a3b8'),
+                    fontWeight: selectedOption ? 600 : 400,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
                 }}>
                     {selectedOption ? selectedOption.name : placeholder}
                 </span>
                 <motion.svg
                     animate={{ rotate: isOpen ? 180 : 0 }}
-                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+                    width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke={dark ? '#C9A84C' : '#94a3b8'}
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ opacity: 0.8, flexShrink: 0 }}
                 >
                     <path d="M6 9l6 6 6-6" />
                 </motion.svg>
@@ -62,69 +86,81 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
                 {isOpen && (
                     <motion.div
                         initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 4, scale: 1 }}
+                        animate={{ opacity: 1, y: 8, scale: 1 }}
                         exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                         style={{
                             position: 'absolute',
                             top: '100%',
                             left: 0,
                             right: 0,
                             zIndex: 1000,
-                            background: '#ffffff',
-                            borderRadius: '1rem',
-                            border: '1.5px solid #e2e8f0',
-                            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                            background: dark ? '#1e293b' : '#ffffff',
+                            borderRadius: '1.25rem',
+                            border: '1px solid',
+                            borderColor: dark ? 'rgba(255,255,255,0.1)' : '#e2e8f0',
+                            boxShadow: dark
+                                ? '0 20px 40px -12px rgba(0,0,0,0.5)'
+                                : '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
                             overflow: 'hidden',
-                            padding: '0.375rem'
+                            padding: '0.5rem',
+                            backdropFilter: dark ? 'blur(16px)' : 'none'
                         }}
                     >
-                        <div style={{ maxHeight: '200px', overflowY: 'auto', scrollbarWidth: 'none' }}>
-                            {options.map((option) => (
-                                <button
-                                    key={option.id || option.name}
-                                    type="button"
-                                    onClick={() => {
-                                        onChange(option.name)
-                                        setIsOpen(false)
-                                    }}
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.625rem 0.875rem',
-                                        borderRadius: '0.625rem',
-                                        border: 'none',
-                                        background: (value === option.name || value === option.id) ? '#fdf0f0' : 'transparent',
-                                        color: (value === option.name || value === option.id) ? '#7B1C1C' : '#475569',
-                                        fontSize: '0.875rem',
-                                        fontWeight: (value === option.name || value === option.id) ? 700 : 500,
-                                        cursor: 'pointer',
-                                        textAlign: 'left',
-                                        transition: 'all 0.15s ease',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        if (value !== option.name && value !== option.id) {
-                                            e.currentTarget.style.background = '#f8fafc'
-                                            e.currentTarget.style.color = '#0f172a'
-                                        }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        if (value !== option.name && value !== option.id) {
-                                            e.currentTarget.style.background = 'transparent'
-                                            e.currentTarget.style.color = '#475569'
-                                        }
-                                    }}
-                                >
-                                    {option.name}
-                                    {(value === option.name || value === option.id) && (
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M20 6L9 17l-5-5" />
-                                        </svg>
-                                    )}
-                                </button>
-                            ))}
+                        <div style={{ maxHeight: '250px', overflowY: 'auto', scrollbarWidth: 'none' }}>
+                            {options.map((option) => {
+                                const isSelected = value === option.name || value === option.id
+                                return (
+                                    <button
+                                        key={option.id || option.name}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(option.name)
+                                            setIsOpen(false)
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.75rem 1rem',
+                                            borderRadius: '0.875rem',
+                                            border: 'none',
+                                            background: isSelected
+                                                ? (dark ? 'rgba(201,168,76,0.15)' : '#fdf0f0')
+                                                : 'transparent',
+                                            color: isSelected
+                                                ? (dark ? '#C9A84C' : '#7B1C1C')
+                                                : (dark ? 'rgba(255,255,255,0.6)' : '#475569'),
+                                            fontSize: fontSize,
+                                            fontWeight: isSelected ? 700 : 500,
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'all 0.2s ease',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            marginBottom: '0.25rem'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (!isSelected) {
+                                                e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.05)' : '#f8fafc'
+                                                e.currentTarget.style.color = dark ? 'white' : '#0f172a'
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            if (!isSelected) {
+                                                e.currentTarget.style.background = 'transparent'
+                                                e.currentTarget.style.color = dark ? 'rgba(255,255,255,0.6)' : '#475569'
+                                            }
+                                        }}
+                                    >
+                                        {option.name}
+                                        {isSelected && (
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                )
+                            })}
                         </div>
                     </motion.div>
                 )}

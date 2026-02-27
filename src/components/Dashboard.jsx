@@ -87,9 +87,13 @@ export default function Dashboard({ uuid }) {
 
     if (loading) {
         return (
-            <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
-                    style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid #e2e8f0', borderTopColor: '#6366f1' }} />
+            <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ maxWidth: '26rem', width: '100%', marginTop: '2rem' }}>
+                    <div className="skeleton" style={{ height: '3rem', width: '60%', margin: '0 auto 1.5rem', borderRadius: '0.75rem' }} />
+                    <div className="card skeleton" style={{ height: '24rem', width: '100%', borderRadius: '2rem', marginBottom: '1.5rem' }} />
+                    <div className="skeleton" style={{ height: '3.5rem', width: '100%', borderRadius: '1rem', marginBottom: '0.75rem' }} />
+                    <div className="skeleton" style={{ height: '3.5rem', width: '100%', borderRadius: '1rem' }} />
+                </div>
             </div>
         )
     }
@@ -97,191 +101,264 @@ export default function Dashboard({ uuid }) {
     const editsLeft = 2 - (student?.edit_count || 0)
 
     return (
-        <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: '-8rem', right: '-8rem', width: '28rem', height: '28rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: '-8rem', left: '-8rem', width: '28rem', height: '28rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(6,182,212,0.05) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ minHeight: '100dvh', background: '#0f172a', padding: '1rem 1.5rem', position: 'relative', overflow: 'hidden' }}>
+            {/* Ambient Background Glows */}
+            <div style={{ position: 'absolute', top: '-10rem', right: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: '-10rem', left: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(123,28,28,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
             <div style={{ maxWidth: '26rem', margin: '0 auto', position: 'relative', zIndex: 10 }}>
 
-                {/* Header with logout */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem', paddingTop: '1rem' }}>
-                    <div style={{ textAlign: 'center' }}>
-                        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em', marginBottom: '0.25rem' }}>Your Event Pass</h1>
-                        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Show this QR code at the entrance</p>
+                {/* Header with Logout */}
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem', paddingTop: '0.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{ width: '3.5rem', height: '3.5rem', borderRadius: '50%', background: 'linear-gradient(135deg, #7B1C1C, #C9A84C)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(123,28,28,0.4)', border: '2px solid rgba(201,168,76,0.3)', overflow: 'hidden' }}>
+                            <img src="/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                        <div>
+                            <h2 style={{ fontSize: '0.875rem', fontWeight: 800, color: 'white', letterSpacing: '0.05em', textTransform: 'uppercase', margin: 0 }}>IT Week 2026</h2>
+                            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.625rem', fontWeight: 600, margin: 0 }}>OFFICIAL EVENT PASS</p>
+                        </div>
                     </div>
                 </motion.div>
 
-                {/* QR Card */}
-                <motion.div className="card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.6 }}
-                    style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', marginBottom: '1.25rem' }}>
+                {/* VIP Pass Holographic Card */}
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.2, duration: 0.8 }}
+                    className="holographic-gold"
+                    style={{
+                        padding: '1px',
+                        borderRadius: '2.25rem',
+                        boxShadow: '0 20px 50px -12px rgba(0,0,0,0.5)',
+                        marginBottom: '2rem',
+                        marginTop: '1.5rem'
+                    }}
+                >
+                    <div className={`glass-dark pattern-circuits ${student?.role === 'leader' || student?.role === 'facilitator' ? 'vibe-hackathon' : 'vibe-masquerade'}`} style={{
+                        padding: '1.75rem 1.5rem',
+                        borderRadius: '2.2rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '1.25rem',
+                        position: 'relative',
+                        border: student?.role === 'leader' || student?.role === 'facilitator' ? '1px solid rgba(201,168,76,0.3)' : '1px solid rgba(201,168,76,0.6)'
+                    }}>
+                        {/* ── EVENT SASH (Amplified Vibe) ── */}
+                        <div style={{
+                            position: 'absolute', top: '1.5rem', left: '-3rem', width: '12rem', height: '2rem',
+                            background: 'linear-gradient(90deg, transparent, #C9A84C, transparent)',
+                            transform: 'rotate(-45deg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 30
+                        }}>
+                            <span style={{ color: '#7B1C1C', fontSize: '0.625rem', fontWeight: 900, letterSpacing: '0.1em' }}>IT WEEK 2026</span>
+                        </div>
 
-                    <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
-                        className="qr-container">
-                        <QRCode value={uuid} size={170} level="H" bgColor="#ffffff" fgColor="#0f172a" />
-                    </motion.div>
+                        {/* ── EVENT WATERMARKS (Refined Positioning & Standing Posture) ── */}
+                        {/* Super Ornate Lace-Style Masquerade Mask (Tucked into corner, rotated down-right) */}
+                        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', opacity: 0.2, transform: 'rotate(15deg)', pointerEvents: 'none', zIndex: 10 }}>
+                            <svg width="100" height="70" viewBox="0 0 140 100" fill="none" stroke="#C9A84C" strokeWidth="1">
+                                {/* Intricate Lace Silhoutte */}
+                                <path d="M10 50 C10 20, 40 10, 70 30 C100 10, 130 20, 130 50 C130 80, 100 90, 70 75 C40 90, 10 80, 10 50 Z" strokeOpacity="0.8" strokeWidth="1.5" />
+                                {/* Detailed Eye Contours */}
+                                <path d="M30 48 Q40 35, 50 48 Q40 60, 30 48 M90 48 Q100 35, 110 48 Q100 60, 90 48" strokeOpacity="0.6" strokeWidth="2" />
+                            </svg>
+                        </div>
 
-                    <AnimatePresence mode="wait">
-                        {!editing ? (
-                            <motion.div key="view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ width: '100%', textAlign: 'center' }}>
-                                <p style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.5rem' }}>{student?.full_name}</p>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-                                    {student?.team_name ? (
-                                        <span className="badge badge-brand">{student?.team_name}</span>
-                                    ) : null}
-                                    <span style={{ background: '#fdf0f0', color: '#7B1C1C', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', textTransform: 'capitalize', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                        {student?.role === 'leader' ? (
-                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="#C9A84C" stroke="#C9A84C" strokeWidth={1}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>Leader</>
-                                        ) : student?.role === 'facilitator' ? (
-                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>Facilitator</>
-                                        ) : student?.role === 'executive' ? (
-                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l-3.5 10.5L2 12l6.5 3.5L8 22l4-3 4 3-.5-6.5L22 12l-6.5-.5L12 2z" /></svg>Executive</>
-                                        ) : student?.role === 'officer' ? (
-                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>Officer</>
-                                        ) : (
-                                            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7B1C1C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" /></svg>Student</>
-                                        )}
+                        {/* Standing Vintage Film Camera (Fixed Geometry and Overlap) */}
+                        <div style={{ position: 'absolute', top: '5.5rem', left: '1rem', opacity: 0.22, pointerEvents: 'none', zIndex: 10 }}>
+                            <svg width="100" height="110" viewBox="0 0 100 110" fill="none" stroke="#C9A84C" strokeWidth="2.5">
+                                {/* Diagonal / Staggered Reels */}
+                                <circle cx="35" cy="45" r="20" strokeOpacity="1" />
+                                <circle cx="35" cy="45" r="5" fill="#C9A84C" fillOpacity="0.8" />
+                                <path d="M35 25 V65 M15 45 H55" strokeWidth="1" strokeOpacity="0.4" />
+
+                                <circle cx="65" cy="25" r="20" strokeOpacity="1" />
+                                <circle cx="65" cy="25" r="5" fill="#C9A84C" fillOpacity="0.8" />
+                                <path d="M65 5 V45 M45 25 H85" strokeWidth="1" strokeOpacity="0.4" />
+
+                                {/* Camera Body (Solid attachment to reels) */}
+                                <rect x="20" y="65" width="50" height="35" rx="4" strokeOpacity="1" />
+                                <rect x="30" y="75" width="30" height="15" rx="2" strokeOpacity="0.4" strokeWidth="1.5" />
+
+                                {/* Conical Lens Projection */}
+                                <path d="M70 75 L95 65 L95 105 L70 95 Z" strokeOpacity="1" strokeLinejoin="round" />
+                                <path d="M85 71 V99" strokeWidth="1.5" strokeOpacity="0.4" />
+                            </svg>
+                        </div>
+
+                        {/* Hackathon / Coding Pattern (Bottom Left) */}
+                        <div style={{ position: 'absolute', bottom: '1.25rem', left: '1.25rem', opacity: 0.22, pointerEvents: 'none', zIndex: 10, fontFamily: '"JetBrains Mono", monospace' }}>
+                            <svg width="130" height="90" viewBox="0 0 130 90" fill="#C9A84C">
+                                <text x="0" y="15" fontSize="10" fontWeight="900" style={{ letterSpacing: '2px' }}>0xDEADBEEF</text>
+                                <text x="0" y="30" fontSize="11" fontWeight="900" opacity="0.8">{'{ HACK_IT_2026 }'}</text>
+                                <text x="0" y="45" fontSize="10" fontWeight="900">while(coding)</text>
+                                <text x="10" y="60" fontSize="10" fontWeight="900" opacity="0.7">coffee++;</text>
+                                <text x="0" y="75" fontSize="10" fontWeight="900">build();</text>
+                            </svg>
+                        </div>
+
+                        {/* Film Strip / Action Pattern (Bottom Right - Fixed Clipping) */}
+                        <div style={{ position: 'absolute', bottom: '1.5rem', right: '0.5rem', opacity: 0.2, pointerEvents: 'none', zIndex: 10, transform: 'rotate(5deg)' }}>
+                            <svg width="150" height="40" viewBox="0 0 150 40" fill="none" stroke="#C9A84C" strokeWidth="2">
+                                <rect x="0" y="5" width="150" height="30" rx="3" strokeOpacity="0.6" />
+                                {[...Array(9)].map((_, i) => (
+                                    <g key={i}>
+                                        <rect x={8 + i * 15} y="8" width="8" height="8" rx="2" fill="#C9A84C" fillOpacity="0.3" />
+                                        <rect x={8 + i * 15} y="24" width="8" height="8" rx="2" fill="#C9A84C" fillOpacity="0.3" />
+                                    </g>
+                                ))}
+                            </svg>
+                        </div>
+
+                        <div style={{ textAlign: 'center', position: 'relative', zIndex: 40 }}>
+                            <span style={{ fontSize: '0.625rem', fontWeight: 900, color: '#C9A84C', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.5rem', display: 'block' }}>Verified Participant</span>
+                            <h1 style={{ fontSize: '1.75rem', fontWeight: 900, color: 'white', letterSpacing: '-0.02em', margin: 0 }}>{student?.full_name}</h1>
+                        </div>
+
+                        <div style={{ position: 'relative' }}>
+                            {/* Animated Pulse Ring */}
+                            <motion.div
+                                animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.2, 0.5] }}
+                                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                                style={{
+                                    position: 'absolute', inset: '-1.5rem', borderRadius: '2rem',
+                                    border: '2px solid rgba(201,168,76,0.3)', pointerEvents: 'none'
+                                }}
+                            />
+                            <div className="qr-container" style={{ padding: '0.875rem', background: 'white', borderRadius: '1.5rem', boxShadow: '0 0 30px rgba(201,168,76,0.2)' }}>
+                                <QRCode value={uuid} size={140} level="H" bgColor="#ffffff" fgColor="#0f172a" />
+                            </div>
+                        </div>
+
+                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                                {student?.team_name ? (
+                                    <span style={{ background: 'rgba(201,168,76,0.15)', color: '#C9A84C', fontSize: '0.75rem', fontWeight: 800, padding: '0.375rem 1rem', borderRadius: '99px', border: '1px solid rgba(201,168,76,0.2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        {student?.team_name}
                                     </span>
-                                </div>
-                                {editsLeft > 0 && (
-                                    <div>
-                                        <button className="btn-secondary" onClick={() => setEditing(true)} style={{ fontSize: '0.875rem', padding: '0.625rem 1rem' }}>
-                                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                            Edit Info <span style={{ color: '#94a3b8', fontWeight: 400 }}>({editsLeft} left)</span>
-                                        </button>
-                                    </div>
-                                )}
-                            </motion.div>
-                        ) : (
-                            <motion.div key="edit" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-                                style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>Full Name</label>
-                                    <input className="input" type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                                </div>
-                                {editRole !== 'executive' && editRole !== 'officer' && (
-                                    <CustomDropdown
-                                        label="Team"
-                                        value={editTeam}
-                                        options={teams}
-                                        onChange={setEditTeam}
-                                        placeholder="Select your team"
-                                    />
-                                )}
-                                <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
-                                        <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>Role</label>
-                                        <button type="button" onClick={() => {
-                                            setShowMoreRoles(!showMoreRoles)
-                                            if (!showMoreRoles && (editRole === 'student' || editRole === 'leader' || editRole === 'facilitator')) {
-                                                setEditRole('officer')
-                                            } else if (showMoreRoles && (editRole === 'executive' || editRole === 'officer')) {
-                                                setEditRole('student')
-                                            }
-                                        }}
-                                            style={{ background: 'none', border: 'none', color: '#7B1C1C', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                                            </svg>
-                                            {showMoreRoles ? 'Regular Roles' : 'Admin Roles'}
-                                        </button>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: showMoreRoles ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                                        {(showMoreRoles
-                                            ? [{ id: 'executive', label: 'Executive' }, { id: 'officer', label: 'Officer' }]
-                                            : [{ id: 'student', label: 'Student' }, { id: 'leader', label: 'Leader' }, { id: 'facilitator', label: 'Facilitator' }]
-                                        ).map((r) => {
-                                            const color = editRole === r.id ? '#7B1C1C' : '#94a3b8'
-                                            const icons = {
-                                                student: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" /></svg>,
-                                                leader: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>,
-                                                facilitator: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>,
-                                                executive: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l-3.5 10.5L2 12l6.5 3.5L8 22l4-3 4 3-.5-6.5L22 12l-6.5-.5L12 2z" /></svg>,
-                                                officer: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>,
-                                            }
-                                            return (
-                                                <button key={r.id} type="button" onClick={() => setEditRole(r.id)}
-                                                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem', padding: '0.5rem 0.25rem', borderRadius: '0.625rem', cursor: 'pointer', fontFamily: 'inherit', border: `2px solid ${editRole === r.id ? '#7B1C1C' : '#e2e8f0'}`, background: editRole === r.id ? '#fdf0f0' : 'white' }}>
-                                                    {icons[r.id]}
-                                                    <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: editRole === r.id ? '#7B1C1C' : '#374151' }}>{r.label}</span>
-                                                </button>
-                                            )
-                                        })}
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.625rem' }}>
-                                    <button className="btn-secondary" type="button" onClick={() => { setEditing(false); setEditName(student.full_name); setEditTeam(student.team_name); setEditRole(student.role || 'student') }} style={{ flex: 1, padding: '0.75rem' }}>Cancel</button>
-                                    <button className="btn-primary" type="button" onClick={handleSaveEdit} disabled={saving} style={{ flex: 1.5, padding: '0.75rem' }}>
-                                        {saving
-                                            ? <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" opacity="0.3" /><path fill="white" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                            : 'Save'}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                                ) : null}
+                                <span style={{ background: '#7B1C1C', color: 'white', fontSize: '0.75rem', fontWeight: 800, padding: '0.375rem 1rem', borderRadius: '99px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                                    {student?.role || 'Student'}
+                                </span>
+                            </div>
 
-                    <AnimatePresence>
-                        {successMsg && <motion.div className="alert alert-success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ width: '100%' }}>{successMsg}</motion.div>}
-                        {error && <motion.div className="alert alert-danger" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ width: '100%' }}>{error}</motion.div>}
-                    </AnimatePresence>
+                            <AnimatePresence mode="wait">
+                                {!editing ? (
+                                    <motion.div key="view-btn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+                                        {editsLeft > 0 && (
+                                            <button onClick={() => setEditing(true)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', borderRadius: '0.75rem', transition: 'all 0.2s' }}>
+                                                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#C9A84C" strokeWidth={2.5}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                Edit Info ({editsLeft} left)
+                                            </button>
+                                        )}
+                                    </motion.div>
+                                ) : (
+                                    <motion.div key="edit-form" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.25rem', borderRadius: '1.25rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <div style={{ marginBottom: '1rem' }}>
+                                                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Full Name</label>
+                                                <input className="input" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white' }} type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                                            </div>
+                                            {editRole !== 'executive' && editRole !== 'officer' && (
+                                                <CustomDropdown
+                                                    label="Team"
+                                                    value={editTeam}
+                                                    options={teams}
+                                                    onChange={setEditTeam}
+                                                    placeholder="Select your team"
+                                                    dark={true}
+                                                />
+                                            )}
+                                            <div style={{ marginTop: '1rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Role</label>
+                                                    <button type="button" onClick={() => {
+                                                        setShowMoreRoles(!showMoreRoles)
+                                                        if (!showMoreRoles && (editRole === 'student' || editRole === 'leader' || editRole === 'facilitator')) { setEditRole('officer') }
+                                                        else if (showMoreRoles && (editRole === 'executive' || editRole === 'officer')) { setEditRole('student') }
+                                                    }} title={showMoreRoles ? "Back to Student Roles" : "Show Admin Roles"} style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: '#f0d080', cursor: 'pointer', padding: '0.35rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', opacity: 0.9 }}>
+                                                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: showMoreRoles ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                                                    {(showMoreRoles
+                                                        ? [{ id: 'executive', label: 'Exec' }, { id: 'officer', label: 'Officer' }]
+                                                        : [{ id: 'student', label: 'Student' }, { id: 'leader', label: 'Leader' }, { id: 'facilitator', label: 'Facil' }]
+                                                    ).map((r) => (
+                                                        <button key={r.id} type="button" onClick={() => setEditRole(r.id)} style={{ padding: '0.5rem', borderRadius: '0.75rem', fontSize: '0.6875rem', fontWeight: 700, border: '1px solid', borderColor: editRole === r.id ? '#C9A84C' : 'rgba(255,255,255,0.1)', background: editRole === r.id ? 'rgba(201,168,76,0.15)' : 'rgba(255,255,255,0.03)', color: editRole === r.id ? '#C9A84C' : 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>
+                                                            {r.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                            <button className="btn-secondary" onClick={() => { setEditing(false); setEditName(student.full_name); setEditTeam(student.team_name); setEditRole(student.role || 'student') }} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}>Cancel</button>
+                                            <button className="btn-primary" onClick={handleSaveEdit} disabled={saving} style={{ flex: 1.5, background: 'linear-gradient(135deg, #7B1C1C, #C9A84C)', border: 'none' }}>
+                                                {saving ? '...' : 'Save Changes'}
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    </div>
                 </motion.div>
 
-                {/* Action Buttons */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
-                    {/* View Logbook button */}
+                {/* Sub-actions Display */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <motion.button
-                        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45, duration: 0.5 }}
-                        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                        initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.6 }}
                         onClick={() => navigate('/logbook')}
-                        style={{ width: '100%', display: 'grid', gridTemplateColumns: '1.25rem 1fr 1.25rem', alignItems: 'center', padding: '1rem', borderRadius: '1rem', background: 'white', border: '2px solid #e2e8f0', color: '#374151', fontWeight: 700, fontSize: '0.9375rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = '#6366f1'; e.currentTarget.style.background = '#f5f3ff' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#374151'; e.currentTarget.style.background = 'white' }}
+                        style={{ width: '100%', padding: '1.25rem', borderRadius: '1.25rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', transition: 'all 0.2s', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.5)' }}
                     >
-                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ justifySelf: 'start' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                        </svg>
-                        <span style={{ textAlign: 'center' }}>My Logbook</span>
-                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} style={{ justifySelf: 'end' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
+                        <div style={{ position: 'absolute', left: '1.25rem', padding: '0.4rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.75rem', display: 'flex' }}>
+                            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#C9A84C" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                        </div>
+                        <span style={{ letterSpacing: '0.02em' }}>My Attendance Log</span>
                     </motion.button>
 
-                    {/* View Scoreboard button */}
                     <motion.button
-                        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }}
-                        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                        initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.7 }}
                         onClick={() => navigate('/scoreboard')}
-                        style={{ width: '100%', display: 'grid', gridTemplateColumns: '1.25rem 1fr 1.25rem', alignItems: 'center', padding: '1rem', borderRadius: '1rem', background: 'linear-gradient(135deg, #7B1C1C, #C9A84C)', border: 'none', color: 'white', fontWeight: 700, fontSize: '0.9375rem', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px -2px rgba(123,28,28,0.3)' }}
+                        style={{ width: '100%', padding: '1.25rem', borderRadius: '1.25rem', background: 'rgba(123,28,28,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: 'white', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', position: 'relative', overflow: 'hidden' }}
                     >
-                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ justifySelf: 'start' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                        </svg>
-                        <span style={{ textAlign: 'center' }}>Live Scoreboard</span>
-                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} style={{ justifySelf: 'end' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
+                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, transparent, rgba(201,168,76,0.05), transparent)', animation: 'shimmer 3s infinite linear' }} />
+                        <div style={{ position: 'absolute', left: '1.25rem', display: 'flex' }}>
+                            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#C9A84C" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                        </div>
+                        Event Scoreboard
                     </motion.button>
                 </div>
 
-            </div >
+                <AnimatePresence>
+                    {(successMsg || error) && (
+                        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ position: 'fixed', bottom: '2rem', left: '2rem', right: '2rem', zIndex: 100 }}>
+                            <div className={`alert alert-${successMsg ? 'success' : 'danger'}`} style={{ boxShadow: '0 10px 30px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                {successMsg || error}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
-            {/* Conditional Admin Access for Executives & Officers */}
-            {
-                (student?.role === 'executive' || student?.role === 'officer') && (
-                    <div style={{ position: 'fixed', bottom: '1rem', left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', fontSize: '0.6875rem' }}>
-                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-                        <a
-                            href="/admin"
-                            style={{ color: '#64748b', textDecoration: 'none', fontWeight: 600, transition: 'color 0.15s ease' }}
-                            onMouseOver={(e) => e.currentTarget.style.color = '#0f172a'}
-                            onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
-                        >
-                            Admin Access
-                        </a>
-                    </div>
-                )
-            }
-        </div >
+                {/* Personal Credit & Admin Link */}
+                <div style={{ marginTop: '3rem', textAlign: 'center', paddingBottom: '2rem' }}>
+                    <p style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.15)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', pointerEvents: 'none', marginBottom: '1.5rem' }}>Built by Lou Vincent Baroro</p>
+
+                    {(student?.role === 'executive' || student?.role === 'officer') && (
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <a href="/admin" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'none', fontSize: '0.625rem', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.5rem 1.25rem', borderRadius: '99px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.8)'} onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
+                                System Administration
+                            </a>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
     )
 }

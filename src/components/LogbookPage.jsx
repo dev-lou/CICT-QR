@@ -11,6 +11,9 @@ export default function LogbookPage({ uuid }) {
     const [filter, setFilter] = useState('all')
     const [dayFilter, setDayFilter] = useState('all')
     const [myRole, setMyRole] = useState('student')
+    const [currentPage, setCurrentPage] = useState(1)
+    const [initialJump, setInitialJump] = useState(true)
+    const pageSize = 30
 
     const fetchData = useCallback(async () => {
         if (!supabase || !uuid) return
@@ -32,24 +35,30 @@ export default function LogbookPage({ uuid }) {
                     const { data, error } = await supabase
                         .from('staff_logbook')
                         .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
-                        .order('time_in', { ascending: false })
-                        .limit(100)
-                    if (error) {
-                        console.error('Staff Logbook fetch error:', error)
-                        throw error
+                        .order('time_in', { ascending: true })
+                    if (error) throw error
+                    setLogbook(data || [])
+                    if (initialJump && data && data.length > pageSize) {
+                        const lp = Math.ceil(data.length / pageSize)
+                        setCurrentPage(lp)
+                        setInitialJump(false)
                     }
-                    setLogbook(data || []) // Assuming setLogbook is used for both staff and student data
                 } catch (err) {
-                    console.error('Error fetching staff logbook:', err)
-                    setLogbook([]) // Clear logbook on error
+                    console.error('Staff log fetch failed:', err)
+                    setLogbook([])
                 }
             } else {
                 // Students see the regular logbook
                 const { data: logs } = await supabase
                     .from('logbook')
                     .select('id, time_in, time_out, students(id, full_name, team_name)')
-                    .order('time_in', { ascending: false })
+                    .order('time_in', { ascending: true })
                 setLogbook(logs || [])
+                if (initialJump && logs && logs.length > pageSize) {
+                    const lp = Math.ceil(logs.length / pageSize)
+                    setCurrentPage(lp)
+                    setInitialJump(false)
+                }
             }
         } catch (err) {
             console.error(err)
@@ -59,6 +68,7 @@ export default function LogbookPage({ uuid }) {
     }, [uuid, navigate])
 
     useEffect(() => { fetchData() }, [fetchData])
+    useEffect(() => { setCurrentPage(1) }, [filter, dayFilter])
 
     const TZ = 'Asia/Manila'
     const fmtTime = (iso) => {
@@ -94,6 +104,9 @@ export default function LogbookPage({ uuid }) {
         return true
     })
 
+    const totalPages = Math.ceil(filtered.length / pageSize)
+    const paginatedData = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
     const isMe = (row) => myStudent && row.students?.id === myStudent.id
 
     if (loading) {
@@ -107,201 +120,263 @@ export default function LogbookPage({ uuid }) {
 
     const presentCount = logbook.filter(r => !r.time_out).length
 
-    const thStyle = {
-        padding: '0.625rem 0.875rem',
-        fontSize: '0.6875rem',
-        fontWeight: 700,
-        color: '#64748b',
-        textTransform: 'uppercase',
-        letterSpacing: '0.06em',
-        background: '#f8fafc',
-        borderBottom: '2px solid #e2e8f0',
-        whiteSpace: 'nowrap',
-        textAlign: 'left',
-    }
-
     return (
-        <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+        <div style={{ minHeight: '100vh', background: '#0f172a', position: 'relative', overflow: 'hidden' }}>
+            {/* Holographic Header Gradient */}
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #7B1C1C, #C9A84C, #7B1C1C)', zIndex: 100 }} />
+
+            {/* Ambient Background Glows */}
+            <div style={{ position: 'fixed', top: '-10rem', right: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%)', pointerEvents: 'none', zIndex: 0 }} />
+            <div style={{ position: 'fixed', bottom: '-10rem', left: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(123,28,28,0.12) 0%, transparent 70%)', pointerEvents: 'none', zIndex: 0 }} />
 
             {/* ── Header ── */}
-            <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 50 }}>
-                <div style={{ maxWidth: '72rem', margin: '0 auto', padding: '0.875rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <button onClick={() => navigate('/')}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '2.25rem', height: '2.25rem', minWidth: '2.25rem', borderRadius: '0.625rem', background: '#f8fafc', border: '1.5px solid #e2e8f0', cursor: 'pointer', color: '#64748b' }}>
-                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            {/* Premium Header */}
+            <div style={{ background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', position: 'sticky', top: 0, zIndex: 100 }}>
+                <div className="holographic-gold" style={{ height: '3px', width: '100%' }} />
+                <div style={{ maxWidth: '64rem', margin: '0 auto', padding: '0.875rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => navigate('/')}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '2rem', height: '2rem', borderRadius: '0.625rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', color: '#C9A84C' }}>
+                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                         </svg>
-                    </button>
+                    </motion.button>
+
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontWeight: 800, fontSize: '0.9375rem', color: '#0f172a', lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
-                            {myRole === 'leader' || myRole === 'facilitator' || myRole === 'executive' || myRole === 'officer' ? 'Staff Logbook' : 'Attendance Logbook'}
-                        </p>
+                        <h1 style={{ fontWeight: 900, fontSize: '1rem', color: 'white', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                            <span style={{ color: '#C9A84C' }}>PROTOCOL:</span> {myRole === 'leader' || myRole === 'facilitator' || myRole === 'executive' || myRole === 'officer' ? 'STAFF LOGBOOK' : 'ATTENDANCE LOG'}
+                        </h1>
                         {myStudent && (
-                            <p style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>
-                                Signed in as <span style={{ color: '#7B1C1C', fontWeight: 600 }}>{myStudent.full_name}</span>
-                                {' · '}
-                                <span style={{ textTransform: 'capitalize' }}>{myRole}</span>
-                                {' · your rows are highlighted'}
+                            <p style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700, margin: '0.125rem 0 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                ENTITY: <span style={{ color: 'white' }}>{myStudent.full_name}</span>
+                                <span style={{ margin: '0 0.5rem', opacity: 0.3 }}>|</span>
+                                RANK: <span style={{ color: '#C9A84C' }}>{myRole}</span>
                             </p>
                         )}
                     </div>
-                    <button onClick={fetchData}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem', borderRadius: '0.625rem', background: '#f1f5f9', border: '1.5px solid #e2e8f0', color: '#6366f1', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: '0.8125rem' }}>
-                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+
+                    <motion.button whileHover={{ scale: 1.1, background: 'rgba(201,168,76,0.15)' }} whileTap={{ scale: 0.9 }}
+                        onClick={fetchData} className="luxury-hover"
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '2.5rem', height: '2.5rem', borderRadius: '0.75rem', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: '#C9A84C', cursor: 'pointer' }}
+                        title="Refresh Archives"
+                    >
+                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
-                        Refresh
-                    </button>
+                    </motion.button>
                 </div>
             </div>
 
-            <div style={{ maxWidth: '72rem', margin: '0 auto', padding: '1rem' }}>
+            <main style={{ maxWidth: '72rem', margin: '0 auto', padding: '1.5rem', position: 'relative', zIndex: 1 }}>
 
-                {/* ── Stats ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
+                {/* ── Dashboard Stats ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
                     {[
-                        { label: 'Total Entries', value: logbook.length, color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
-                        { label: 'Present', value: presentCount, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-                        { label: 'Done', value: logbook.filter(r => !!r.time_out).length, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
+                        { label: 'TOTAL SESSIONS', value: logbook.length, color: '#C9A84C', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+                        { label: 'ACTIVE NOW', value: presentCount, color: '#10b981', icon: 'M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728M12 12a1 1 0 100-2 1 1 0 000 2z' },
+                        { label: 'COMPLETED', value: logbook.filter(r => !!r.time_out).length, color: 'rgba(255,255,255,0.4)', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
                     ].map((s) => (
-                        <div key={s.label} style={{ background: 'white', borderRadius: '0.875rem', padding: '1rem 0.75rem', textAlign: 'center', border: `1.5px solid ${s.border}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                            <p style={{ fontSize: '1.75rem', fontWeight: 900, color: s.color, letterSpacing: '-0.04em', lineHeight: 1 }}>{s.value}</p>
-                            <p style={{ fontSize: '0.625rem', color: '#94a3b8', marginTop: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>{s.label}</p>
+                        <div key={s.label} className="luxury-card" style={{ padding: '1.25rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)' }}>
+                            <p style={{ fontSize: '2rem', fontWeight: 900, color: s.color, letterSpacing: '-0.04em', margin: 0 }}>{s.value}</p>
+                            <p style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800 }}>{s.label}</p>
                         </div>
                     ))}
                 </div>
 
-                {/* ── Filters ── */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.875rem' }}>
-                    <div style={{ display: 'flex', gap: '0.25rem', background: 'white', borderRadius: '0.625rem', padding: '0.25rem', border: '1.5px solid #e2e8f0' }}>
-                        {[{ id: 'all', label: 'All' }, { id: 'in', label: '● Present' }, { id: 'out', label: 'Done' }].map((f) => (
-                            <button key={f.id} onClick={() => setFilter(f.id)}
-                                style={{ padding: '0.3rem 0.75rem', borderRadius: '0.375rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: filter === f.id ? '#6366f1' : 'transparent', color: filter === f.id ? 'white' : '#64748b', transition: 'all 0.15s' }}>
-                                {f.label}
-                            </button>
-                        ))}
-                    </div>
-                    {eventDays.length > 0 && (
-                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                            <button onClick={() => setDayFilter('all')}
-                                style={{ padding: '0.3rem 0.625rem', borderRadius: '0.4rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', borderColor: dayFilter === 'all' ? '#6366f1' : '#e2e8f0', background: dayFilter === 'all' ? '#eef2ff' : 'white', color: dayFilter === 'all' ? '#4f46e5' : '#64748b' }}>
-                                All Days
-                            </button>
-                            {eventDays.map((d) => (
-                                <button key={d} onClick={() => setDayFilter(d)}
-                                    style={{ padding: '0.3rem 0.625rem', borderRadius: '0.4rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', borderColor: dayFilter === d ? '#6366f1' : '#e2e8f0', background: dayFilter === d ? '#eef2ff' : 'white', color: dayFilter === d ? '#4f46e5' : '#64748b' }}>
-                                    {fmtDateFull(d + 'T00:00:00')}
+                {/* ── Refined Filters ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
+                    <div className="luxury-card" style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '0.375rem', borderRadius: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                {[{ id: 'all', label: 'All' }, { id: 'in', label: 'Present' }, { id: 'out', label: 'Done' }].map((f) => (
+                                    <button key={f.id} onClick={() => setFilter(f.id)}
+                                        style={{ padding: '0.5rem 1.25rem', borderRadius: '0.75rem', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: filter === f.id ? 'rgba(255,255,255,0.08)' : 'transparent', color: filter === f.id ? 'white' : 'rgba(255,255,255,0.3)', transition: 'all 0.2s', textTransform: 'uppercase' }}>
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div style={{ flex: 1, display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                <button onClick={() => setDayFilter('all')}
+                                    style={{ padding: '0.5rem 1rem', borderRadius: '0.875rem', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', borderColor: dayFilter === 'all' ? '#C9A84C' : 'rgba(255,255,255,0.05)', background: dayFilter === 'all' ? 'rgba(201,168,76,0.1)' : 'rgba(255,255,255,0.02)', color: dayFilter === 'all' ? '#C9A84C' : 'rgba(255,255,255,0.3)' }}>
+                                    ALL DAYS
                                 </button>
-                            ))}
-                        </div>
-                    )}
-                    <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500 }}>
-                        {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'}
-                    </span>
-                </div>
+                                {eventDays.map((d) => (
+                                    <button key={d} onClick={() => setDayFilter(d)}
+                                        style={{ padding: '0.5rem 1rem', borderRadius: '0.875rem', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid', borderColor: dayFilter === d ? '#C9A84C' : 'rgba(255,255,255,0.05)', background: dayFilter === d ? 'rgba(201,168,76,0.1)' : 'rgba(255,255,255,0.02)', color: dayFilter === d ? '#C9A84C' : 'rgba(255,255,255,0.3)' }}>
+                                        {fmtDateFull(d + 'T00:00:00').toUpperCase()}
+                                    </button>
+                                ))}
+                            </div>
 
-                {/* ── TABLE ── */}
-                <div style={{ background: 'white', borderRadius: '1rem', border: '1.5px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                            <thead>
-                                <tr>
-                                    <th style={{ ...thStyle, width: '2.5rem', textAlign: 'center' }}>#</th>
-                                    <th style={thStyle}>Name</th>
-                                    <th style={thStyle}>Role</th>
-                                    <th style={thStyle}>Team</th>
-                                    <th style={thStyle}>Date</th>
-                                    <th style={thStyle}>Time In</th>
-                                    <th style={thStyle}>Time Out</th>
-                                    <th style={thStyle}>Duration</th>
-                                    <th style={{ ...thStyle, textAlign: 'center' }}>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filtered.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={9} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem' }}>
-                                            No records found
-                                        </td>
-                                    </tr>
-                                ) : filtered.map((row, i) => {
-                                    const mine = isMe(row)
-                                    const dur = duration(row.time_in, row.time_out)
-                                    const cellBg = mine
-                                        ? 'rgba(99,102,241,0.05)'
-                                        : i % 2 === 0 ? 'white' : '#fafafa'
-                                    const tdBase = {
-                                        padding: '0.75rem 0.875rem',
-                                        borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none',
-                                        background: cellBg,
-                                        verticalAlign: 'middle',
-                                    }
-                                    return (
-                                        <motion.tr key={row.id}
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            transition={{ delay: Math.min(i * 0.015, 0.3) }}
-                                            style={{ borderLeft: mine ? '3px solid #6366f1' : '3px solid transparent' }}
-                                        >
-                                            <td style={{ ...tdBase, textAlign: 'center', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{i + 1}</td>
-                                            <td style={tdBase}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                                                    {mine && (
-                                                        <span style={{ fontSize: '0.5625rem', background: 'linear-gradient(135deg,#6366f1,#06b6d4)', color: 'white', borderRadius: '99px', padding: '0.1rem 0.4rem', fontWeight: 700, flexShrink: 0 }}>You</span>
-                                                    )}
-                                                    <span style={{ fontWeight: mine ? 700 : 500, color: mine ? '#4f46e5' : '#0f172a', whiteSpace: 'nowrap' }}>
-                                                        {row.students?.full_name}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td style={tdBase}>
-                                                <span style={{
-                                                    background: row.students?.role === 'leader' ? '#fdf0f0' : row.students?.role === 'facilitator' ? '#fefce8' : row.students?.role === 'executive' ? '#ecfdf5' : row.students?.role === 'officer' ? '#eff6ff' : '#f1f5f9',
-                                                    color: row.students?.role === 'leader' ? '#7B1C1C' : row.students?.role === 'facilitator' ? '#854d0e' : row.students?.role === 'executive' ? '#059669' : row.students?.role === 'officer' ? '#2563eb' : '#475569',
-                                                    fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap', textTransform: 'capitalize'
-                                                }}>
-                                                    {row.students?.role || 'student'}
-                                                </span>
-                                            </td>
-                                            <td style={tdBase}>
-                                                {(row.students?.role === 'executive' || row.students?.role === 'officer') ? (
-                                                    <span style={{ color: '#cbd5e1' }}>—</span>
-                                                ) : (
-                                                    <span style={{ background: '#eef2ff', color: '#4f46e5', fontSize: '0.6875rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap' }}>
-                                                        {row.students?.team_name}
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td style={{ ...tdBase, color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{fmtDate(row.time_in)}</td>
-                                            <td style={{ ...tdBase, color: '#0f172a', fontWeight: 600, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_in)}</td>
-                                            <td style={{ ...tdBase, color: row.time_out ? '#0f172a' : '#cbd5e1', fontWeight: row.time_out ? 600 : 400, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                                                {fmtTime(row.time_out)}
-                                            </td>
-                                            <td style={{ ...tdBase, color: dur ? '#475569' : '#cbd5e1', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{dur ?? '—'}</td>
-                                            <td style={{ ...tdBase, textAlign: 'center' }}>
-                                                <span style={{
-                                                    display: 'inline-block',
-                                                    padding: '0.2rem 0.625rem', borderRadius: '99px', fontSize: '0.6875rem', fontWeight: 700, whiteSpace: 'nowrap',
-                                                    background: row.time_out ? '#f1f5f9' : '#dcfce7',
-                                                    color: row.time_out ? '#64748b' : '#16a34a',
-                                                    border: `1px solid ${row.time_out ? '#e2e8f0' : '#86efac'}`,
-                                                }}>
-                                                    {row.time_out ? 'Done' : '● Present'}
-                                                </span>
-                                            </td>
-                                        </motion.tr>
-                                    )
-                                })}
-                            </tbody>
-                        </table>
+                            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                {filtered.length} ARCHIVES LOADED
+                            </span>
+                        </div>
                     </div>
                 </div>
 
-                <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: '#94a3b8', marginTop: '1.25rem', paddingBottom: '1rem' }}>
+                {/* ── ARCHIVE GRID / TABLE ── */}
+                <div className="luxury-card">
+                    {filtered.length === 0 ? (
+                        <div style={{ padding: '6rem 2rem', textAlign: 'center' }}>
+                            <p style={{ fontSize: '1.125rem', fontWeight: 900, color: 'white', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>EMPTY REPOSITORY</p>
+                            <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>No attendance signatures localized for this temporal sector.</p>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Desktop Table */}
+                            <table className="desktop-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                                <thead>
+                                    <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <th style={{ padding: '1.25rem 1.5rem', textAlign: 'center', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>#</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>ENTITY NAME</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>DESIGNATION</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>AFFILIATION</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>TEMPORAL STAMP</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>ENTRY</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>EXIT</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', textAlign: 'center', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>STATUS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {paginatedData.map((row, i) => {
+                                        const mine = isMe(row)
+                                        const globalIndex = (currentPage - 1) * pageSize + i + 1
+                                        const roleColor = row.students?.role === 'leader' ? '#ef4444' : row.students?.role === 'facilitator' ? '#f59e0b' : row.students?.role === 'executive' ? '#10b981' : row.students?.role === 'officer' ? '#6366f1' : 'rgba(255,255,255,0.4)'
+
+                                        return (
+                                            <motion.tr key={row.id || `empty-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.015, 0.3) }}
+                                                className="luxury-table-row" style={{ background: mine ? 'rgba(201,168,76,0.03)' : 'transparent' }}>
+                                                <td style={{ padding: '1rem 1.5rem', textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontWeight: 800 }}>{globalIndex}</td>
+                                                <td style={{ padding: '1rem 1.5rem' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        {mine && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#C9A84C', boxShadow: '0 0 8px #C9A84C' }} />}
+                                                        <span style={{ fontWeight: 800, color: mine ? '#C9A84C' : 'white', fontSize: '0.9375rem' }}>{row.students?.full_name}</span>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '1rem 1.5rem' }}>
+                                                    <span style={{ background: `${roleColor}10`, color: roleColor, fontSize: '0.625rem', fontWeight: 900, padding: '0.25rem 0.625rem', borderRadius: '4px', border: `1px solid ${roleColor}25`, textTransform: 'uppercase' }}>
+                                                        {row.students?.role || 'student'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '1rem 1.5rem' }}>
+                                                    <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 800, fontSize: '0.75rem' }}>{row.students?.team_name?.toUpperCase() || '—'}</span>
+                                                </td>
+                                                <td style={{ padding: '1rem 1.5rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem', fontWeight: 600 }}>{fmtDate(row.time_in)}</td>
+                                                <td style={{ padding: '1rem 1.5rem', color: 'white', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{fmtTime(row.time_in)}</td>
+                                                <td style={{ padding: '1rem 1.5rem', color: row.time_out ? 'white' : 'rgba(255,255,255,0.1)', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{row.time_out ? fmtTime(row.time_out) : '--:--'}</td>
+                                                <td style={{ padding: '1rem 1.5rem', textAlign: 'center' }}>
+                                                    <div style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.3rem 0.75rem', borderRadius: '99px', fontSize: '0.625rem', fontWeight: 900,
+                                                        background: row.time_out ? 'rgba(255,255,255,0.03)' : 'rgba(16,185,129,0.1)',
+                                                        color: row.time_out ? 'rgba(255,255,255,0.3)' : '#10b981',
+                                                        border: `1px solid ${row.time_out ? 'rgba(255,255,255,0.05)' : 'rgba(16,185,129,0.2)'}`
+                                                    }}>
+                                                        {!row.time_out && <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981' }} />}
+                                                        {row.time_out ? 'ARCHIVED' : 'ACTIVE'}
+                                                    </div>
+                                                </td>
+                                            </motion.tr>
+                                        )
+                                    })}
+                                    {/* Placeholders */}
+                                    {Array.from({ length: pageSize - paginatedData.length }).map((_, pi) => (
+                                        <tr key={`filler-${pi}`} style={{ height: '3.75rem', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                                            <td colSpan={8} style={{ padding: '0 1.5rem', opacity: 0.03 }}>
+                                                <div style={{ height: '0.5rem', background: 'white', borderRadius: '4px', width: '100%' }} />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+
+                            {/* Mobile Cards */}
+                            <div className="mobile-cards" style={{ padding: '1.25rem' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                    {paginatedData.map((row, i) => {
+                                        const mine = isMe(row)
+                                        const roleColor = row.students?.role === 'leader' ? '#ef4444' : row.students?.role === 'facilitator' ? '#f59e0b' : row.students?.role === 'executive' ? '#10b981' : row.students?.role === 'officer' ? '#6366f1' : 'rgba(255,255,255,0.4)'
+
+                                        return (
+                                            <motion.div key={row.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i * 0.015, 0.3) }}
+                                                style={{ background: mine ? 'rgba(201,168,76,0.04)' : 'rgba(255,255,255,0.02)', border: mine ? '1px solid rgba(201,168,76,0.2)' : '1px solid rgba(255,255,255,0.05)', borderRadius: '1.25rem', padding: '1.25rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                                                    <div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            {mine && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#C9A84C' }} />}
+                                                            <p style={{ fontWeight: 900, color: mine ? '#C9A84C' : 'white', fontSize: '1rem', letterSpacing: '-0.01em', margin: 0 }}>{row.students?.full_name}</p>
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                                            <span style={{ color: roleColor, fontSize: '0.625rem', fontWeight: 900, textTransform: 'uppercase' }}>{row.students?.role || 'student'}</span>
+                                                            <span style={{ color: '#C9A84C', fontSize: '0.625rem', fontWeight: 800 }}>•</span>
+                                                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.625rem', fontWeight: 800 }}>{row.students?.team_name?.toUpperCase() || 'UNAFFILIATED'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{
+                                                        padding: '0.35rem 0.75rem', borderRadius: '99px', fontSize: '0.625rem', fontWeight: 900, textTransform: 'uppercase',
+                                                        background: row.time_out ? 'rgba(255,255,255,0.05)' : 'rgba(16, 185, 129, 0.1)',
+                                                        color: row.time_out ? 'rgba(255,255,255,0.4)' : '#10b981',
+                                                        border: `1px solid ${row.time_out ? 'rgba(255,255,255,0.1)' : 'rgba(16, 185, 129, 0.2)'}`
+                                                    }}>
+                                                        {row.time_out ? 'ARCHIVED' : 'ACTIVE'}
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '0.875rem' }}>
+                                                    <div>
+                                                        <p style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>TIME IN</p>
+                                                        <p style={{ fontSize: '0.875rem', fontWeight: 800, color: 'white' }}>{fmtTime(row.time_in)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p style={{ fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>TIME OUT</p>
+                                                        <p style={{ fontSize: '0.875rem', fontWeight: 800, color: row.time_out ? 'white' : 'rgba(255,255,255,0.1)' }}>{row.time_out ? fmtTime(row.time_out) : '--:--'}</p>
+                                                    </div>
+                                                </div>
+                                                <p style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.2)', fontWeight: 700, marginTop: '0.875rem', textAlign: 'right' }}>{fmtDateFull(row.time_in).toUpperCase()}</p>
+                                            </motion.div>
+                                        )
+                                    })}
+                                    {/* Placeholders */}
+                                    {Array.from({ length: pageSize - paginatedData.length }).map((_, pi) => (
+                                        <div key={`filler-mob-${pi}`}
+                                            style={{ height: '8rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.03)', borderRadius: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <div style={{ width: '40%', height: '4px', background: 'rgba(255,255,255,0.02)', borderRadius: '2px' }} />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Pagination Controls */}
+                            {totalPages > 0 && (
+                                <div style={{ padding: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)' }}>
+                                    <button
+                                        disabled={currentPage === 1}
+                                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: currentPage === 1 ? 'rgba(255,255,255,0.1)' : '#C9A84C', padding: '0.5rem 1rem', borderRadius: '0.75rem', fontSize: '0.75rem', fontWeight: 800, cursor: currentPage === 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                                    >
+                                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7" /></svg>
+                                        PREV
+                                    </button>
+                                    <span style={{ fontSize: '0.75rem', fontWeight: 900, color: 'white', letterSpacing: '0.1em' }}>
+                                        PAGE <span style={{ color: '#C9A84C' }}>{currentPage}</span> / {totalPages}
+                                    </span>
+                                    <button
+                                        disabled={currentPage === totalPages}
+                                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: currentPage === totalPages ? 'rgba(255,255,255,0.1)' : '#C9A84C', padding: '0.5rem 1rem', borderRadius: '0.75rem', fontSize: '0.75rem', fontWeight: 800, cursor: currentPage === totalPages ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                                    >
+                                        NEXT
+                                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M9 5l7 7-7 7" /></svg>
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: 'rgba(255,255,255,0.2)', marginTop: '2.5rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                     Built by Lou Vincent Baroro
                 </p>
-            </div>
+            </main>
         </div>
     )
 }

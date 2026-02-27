@@ -6,6 +6,7 @@
   --color-brand-light: #a02424;
   --color-brand-dark: #5a1414;
   --color-accent: #C9A84C;
+  --color-gold-light: #f0d080;
   --color-success: #10b981;
   --color-danger: #ef4444;
   --color-warning: #f59e0b;
@@ -14,6 +15,7 @@
   --color-border: #e2e8f0;
   --color-text: #0f172a;
   --color-muted: #64748b;
+  --color-dark-bg: #0f172a;
 }
 
 *,
@@ -415,6 +417,71 @@ button {
 }
 
 /* ===========================
+   Skeleton Shimmer
+=========================== */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+.skeleton-dark {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+.skeleton-gold {
+  background: linear-gradient(90deg, rgba(201, 168, 76, 0.1) 25%, rgba(201, 168, 76, 0.2) 50%, rgba(201, 168, 76, 0.1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@keyframes holographic {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.holographic-gold {
+  background: linear-gradient(135deg, #C9A84C 0%, #f0d080 25%, #7B1C1C 50%, #f0d080 75%, #C9A84C 100%);
+  background-size: 400% 400%;
+  animation: holographic 8s ease infinite;
+}
+
+/* ===========================
    Tab nav  
 =========================== */
 .tab-nav {
@@ -493,4 +560,186 @@ button {
 
 #qr-reader {
   border: none !important;
+}
+
+/* ===========================
+   Luxury 2026 Design System
+=========================== */
+.luxury-card {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  position: relative;
+}
+
+.luxury-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, transparent 45%, rgba(201, 168, 76, 0.03) 50%, transparent 55%);
+  background-size: 200% 200%;
+  pointer-events: none;
+  animation: holographic 6s ease infinite;
+}
+
+/* Event Textures (Zero Data) */
+.pattern-circuits {
+  background-image:
+    radial-gradient(circle, rgba(201, 168, 76, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(201, 168, 76, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201, 168, 76, 0.02) 1px, transparent 1px);
+  background-size: 20px 20px, 40px 40px, 40px 40px;
+}
+
+.pattern-cinematic {
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.05), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.05));
+  background-size: 100% 4px, 4px 100%;
+  pointer-events: none;
+  animation: flicker 0.15s infinite;
+}
+
+/* ── IT Week Themes (Amplified) ── */
+
+/* Masquerade: Velvet & Gold */
+.vibe-masquerade {
+  background: radial-gradient(circle at 50% -20%, #9b1c1c 0%, #4a0d0d 60%, #1a0505 100%) !important;
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.8), 0 20px 50px rgba(0, 0, 0, 0.5);
+  border: 2px solid #C9A84C !important;
+}
+
+.vibe-masquerade::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0 L40 20 L20 40 L0 20 Z' fill='%23C9A84C' fill-opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* Hackathon: Cyber Nexus */
+.vibe-hackathon {
+  background: #020617 !important;
+  border-color: rgba(201, 168, 76, 0.3) !important;
+}
+
+.vibe-hackathon::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(201, 168, 76, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201, 168, 76, 0.1) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: radial-gradient(circle at center, black, transparent 80%);
+  pointer-events: none;
+}
+
+.vibe-hackathon::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background: linear-gradient(to bottom, transparent, rgba(201, 168, 76, 0.05) 50%, transparent);
+  animation: scan 4s linear infinite;
+  pointer-events: none;
+}
+
+/* SineAI: Cinema Alpha */
+.vibe-sineai {
+  position: relative;
+  overflow: hidden;
+}
+
+.vibe-sineai::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 10%;
+  background: black;
+  z-index: 20;
+}
+
+.vibe-sineai::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 10%;
+  background: black;
+  z-index: 20;
+}
+
+/* Animations */
+@keyframes flicker {
+  0% {
+    opacity: 0.97;
+  }
+
+  5% {
+    opacity: 0.95;
+  }
+
+  100% {
+    opacity: 0.98;
+  }
+}
+
+@keyframes scan {
+  from {
+    transform: translateY(-100%);
+  }
+
+  to {
+    transform: translateY(100%);
+  }
+}
+
+.luxury-table-row {
+  transition: background 0.2s ease, transform 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.luxury-table-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Responsive Table/Card Handling */
+.desktop-table {
+  display: table;
+}
+
+.mobile-cards {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktop-table {
+    display: none;
+  }
+
+  .mobile-cards {
+    display: block;
+  }
+}
+
+/* Interactive Elements */
+.luxury-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.luxury-hover:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #C9A84C;
+  transform: translateY(-2px);
 }

@@ -46,7 +46,7 @@ function AdminRoot() {
     const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(
         () => sessionStorage.getItem('admin_logged_in') === 'true'
     )
-    const [view, setView] = useState('scanner') // 'scanner' | 'manage' | 'audit' | 'tally'
+    const [view, setView] = useState('scanner') // 'scanner' | 'manage' | 'audit' | 'tally' | 'history'
 
     if (!isAdminLoggedIn) {
         return (
@@ -71,6 +71,7 @@ function AdminRoot() {
                 onNavigateManageData={() => setView('manage')}
                 onNavigateAudit={() => setView('audit')}
                 onNavigateTally={() => setView('tally')}
+                onNavigateHistory={() => setView('history')}
             />
         )
     }
@@ -80,6 +81,7 @@ function AdminRoot() {
             <AdminManageData
                 onLogout={logout}
                 onNavigateScanner={() => setView('scanner')}
+                onNavigateHistory={() => setView('history')}
                 onNavigateAudit={() => setView('audit')}
                 onNavigateTally={() => setView('tally')}
             />
@@ -91,6 +93,7 @@ function AdminRoot() {
             <AdminAuditLog
                 onLogout={logout}
                 onNavigateScanner={() => setView('scanner')}
+                onNavigateHistory={() => setView('history')}
                 onNavigateManageData={() => setView('manage')}
                 onNavigateTally={() => setView('tally')}
             />
@@ -102,8 +105,23 @@ function AdminRoot() {
             <AdminPointTally
                 onLogout={logout}
                 onNavigateScanner={() => setView('scanner')}
+                onNavigateHistory={() => setView('history')}
                 onNavigateManageData={() => setView('manage')}
                 onNavigateAudit={() => setView('audit')}
+            />
+        )
+    }
+
+    if (view === 'history') {
+        return (
+            <ScoreHistory
+                isAdmin={true}
+                onBack={() => setView('tally')} // Or whichever sector they came from
+                onNavigateScanner={() => setView('scanner')}
+                onNavigateManageData={() => setView('manage')}
+                onNavigateAudit={() => setView('audit')}
+                onNavigateTally={() => setView('tally')}
+                onLogout={logout}
             />
         )
     }
@@ -128,6 +146,7 @@ export default function App() {
             <Route path="/scoreboard" element={<PublicScoreboard />} />
             <Route path="/scoreboard-itweek2026" element={<Scoreboard />} />
             <Route path="/score-history" element={<ScoreHistory />} />
+            <Route path="/official-standings-2026-secure" element={<AdminPointTally isPublic={true} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     )

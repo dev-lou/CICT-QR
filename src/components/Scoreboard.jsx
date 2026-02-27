@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import Swal from 'sweetalert2'
@@ -110,11 +111,14 @@ function ToggleRow({ label, IconEl, active, onChange, accentColor = '#6366f1' })
 
 /* ── Main ──────────────────────────────────────────────────────────────────── */
 export default function Scoreboard() {
+    const navigate = useNavigate()
     const [teams, setTeams] = useState([])
     const [hideNames, setHideNames] = useState(true)
     const [hideScores, setHideScores] = useState(true)
     const [hideTop2, setHideTop2] = useState(true)
     const [hideBars, setHideBars] = useState(true)
+    const [hideRank3, setHideRank3] = useState(false)
+    const [hideRank4, setHideRank4] = useState(false)
     const [hideAll, setHideAll] = useState(false)
     const [revealState, setRevealState] = useState('idle') // idle | countdown | winner
     const [countdown, setCountdown] = useState(10)
@@ -147,6 +151,8 @@ export default function Scoreboard() {
             setHideScores(data.hide_scores ?? true)
             setHideTop2(data.hide_top2 ?? true)
             setHideBars(data.hide_bars ?? true)
+            setHideRank3(data.hide_rank_3 ?? false)
+            setHideRank4(data.hide_rank_4 ?? false)
             setHideAll(data.hide_all ?? false)
         })
     }, [])
@@ -161,6 +167,8 @@ export default function Scoreboard() {
                 hide_scores: hideScores,
                 hide_bars: hideBars,
                 hide_top2: hideTop2,
+                hide_rank_3: hideRank3,
+                hide_rank_4: hideRank4,
                 hide_all: hideAll,
                 updated_at: new Date().toISOString(),
             }, { onConflict: 'id' }).then(({ error }) => {
@@ -168,7 +176,7 @@ export default function Scoreboard() {
             })
         }, 300)
         return () => clearTimeout(t)
-    }, [hideNames, hideScores, hideBars, hideTop2, hideAll])
+    }, [hideNames, hideScores, hideBars, hideTop2, hideRank3, hideRank4, hideAll])
 
     useEffect(() => {
         const html = document.documentElement, body = document.body
@@ -209,19 +217,21 @@ export default function Scoreboard() {
     const resetAll = () => {
         setRevealState('idle'); setShowConfetti(false); setWinnerScore(0)
         // Reveal everything when dismissing winner screen
-        setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false); setHideAll(false)
+        setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false);
+        setHideRank3(false); setHideRank4(false); setHideAll(false)
         setShowControls(false)
         // Reset reveal state in DB so public scoreboard returns to normal
         if (supabase) supabase.from('scoreboard_settings').upsert({
             id: 1, reveal_state: 'idle', reveal_countdown: 0,
-            hide_names: false, hide_scores: false, hide_top2: false, hide_bars: false, hide_all: false,
+            hide_names: false, hide_scores: false, hide_top2: false, hide_bars: false,
+            hide_rank_3: false, hide_rank_4: false, hide_all: false,
         }, { onConflict: 'id' }).then(() => { })
     }
 
     const resetToggles = async () => {
         const result = await Swal.fire({
             title: 'Reset Toggles?',
-            text: 'This will hide names, scores, bars and top 2. Hide Everything stays off.',
+            text: 'This will hide names, scores, bars, top 2, and ranks 3-4. Hide Everything stays off.',
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#ef4444',
@@ -232,7 +242,7 @@ export default function Scoreboard() {
             color: '#e2e8f0',
         })
         if (!result.isConfirmed) return
-        setHideNames(true); setHideScores(true); setHideTop2(true); setHideBars(true); setHideAll(false)
+        setHideNames(true); setHideScores(true); setHideTop2(true); setHideBars(true); setHideRank3(true); setHideRank4(true); setHideAll(false)
     }
 
     // Confirmation wrapper — prevents accidental toggle during live event
@@ -339,6 +349,8 @@ export default function Scoreboard() {
                             <ToggleRow label="Hide Scores" IconEl={Icon.Hash} active={hideScores} onChange={() => confirmToggle('Scores', hideScores, setHideScores)} accentColor="#06b6d4" />
                             <ToggleRow label="Hide Bars" IconEl={Icon.BarChart} active={hideBars} onChange={() => confirmToggle('Bars', hideBars, setHideBars)} accentColor="#f59e0b" />
                             <ToggleRow label="Hide Top 2 (suspense)" IconEl={Icon.Medal} active={hideTop2} onChange={() => confirmToggle('Top 2', hideTop2, setHideTop2)} accentColor="#ec4899" />
+                            <ToggleRow label="Hide Rank 3" IconEl={Icon.Medal} active={hideRank3} onChange={() => confirmToggle('Rank 3', hideRank3, setHideRank3)} accentColor="#d97706" />
+                            <ToggleRow label="Hide Rank 4" IconEl={Icon.Medal} active={hideRank4} onChange={() => confirmToggle('Rank 4', hideRank4, setHideRank4)} accentColor="#6366f1" />
                             <ToggleRow label="Hide Everything" IconEl={Icon.Lock} active={hideAll} onChange={() => confirmToggle('Everything', hideAll, setHideAll)} accentColor="#ef4444" />
                         </div>
 
@@ -368,6 +380,79 @@ export default function Scoreboard() {
                         )}
 
                         <div style={{ margin: '0.75rem 0 0.5rem', height: '1px', background: 'rgba(255,255,255,0.05)' }} />
+
+                        {/* Section: Remote Navigation */}
+                        <p style={{ fontSize: '0.5875rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.5rem' }}>Remote Display</p>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                            <button onClick={async () => {
+                                const res = await Swal.fire({
+                                    title: 'Show Point Tally?',
+                                    text: 'This will instantly switch the audience screen to the Point Tally.',
+                                    icon: 'question',
+                                    showCancelButton: true,
+                                    confirmButtonColor: '#10b981',
+                                    cancelButtonColor: '#334155',
+                                    confirmButtonText: 'Yes, switch it!',
+                                    background: '#0f172a',
+                                    color: '#e2e8f0',
+                                })
+                                if (res.isConfirmed && supabase) {
+                                    await supabase.from('scoreboard_settings').upsert({ id: 1, force_route: '/official-standings-2026-secure' }, { onConflict: 'id' })
+                                    Swal.fire({
+                                        title: 'Displayed Tally',
+                                        icon: 'success',
+                                        toast: true,
+                                        position: 'bottom-end',
+                                        showConfirmButton: false,
+                                        timer: 3000,
+                                        background: '#0f172a',
+                                        color: '#e2e8f0',
+                                    })
+                                }
+                            }}
+                                style={{
+                                    flex: 1, padding: '0.6rem', borderRadius: '0.625rem',
+                                    border: '1px solid rgba(16,185,129,0.25)', background: 'rgba(16,185,129,0.07)',
+                                    cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.75rem', fontWeight: 600, color: '#10b981',
+                                }}>
+                                Show Tally
+                            </button>
+                            <button onClick={async () => {
+                                const res = await Swal.fire({
+                                    title: 'Show Scoreboard?',
+                                    text: 'This will instantly switch the audience screen back to the main Scoreboard.',
+                                    icon: 'question',
+                                    showCancelButton: true,
+                                    confirmButtonColor: '#6366f1',
+                                    cancelButtonColor: '#334155',
+                                    confirmButtonText: 'Yes, switch it!',
+                                    background: '#0f172a',
+                                    color: '#e2e8f0',
+                                })
+                                if (res.isConfirmed && supabase) {
+                                    await supabase.from('scoreboard_settings').upsert({ id: 1, force_route: '/scoreboard' }, { onConflict: 'id' })
+                                    Swal.fire({
+                                        title: 'Displayed Scoreboard',
+                                        icon: 'success',
+                                        toast: true,
+                                        position: 'bottom-end',
+                                        showConfirmButton: false,
+                                        timer: 3000,
+                                        background: '#0f172a',
+                                        color: '#e2e8f0',
+                                    })
+                                }
+                            }}
+                                style={{
+                                    flex: 1, padding: '0.6rem', borderRadius: '0.625rem',
+                                    border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.07)',
+                                    cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.75rem', fontWeight: 600, color: '#a5b4fc',
+                                }}>
+                                Show Scoreboard
+                            </button>
+                        </div>
+
+                        <div style={{ margin: '0.25rem 0 0.75rem', height: '1px', background: 'rgba(255,255,255,0.05)' }} />
 
                         <button onClick={resetToggles}
                             style={{
@@ -520,7 +605,10 @@ export default function Scoreboard() {
                             const pct = Math.min((score / maxScore) * 100, 100)
                             const rank = RANK[idx]
                             const isTop = idx === 0
-                            const masked = hideTop2 && idx < 2
+                            const maskedTop2 = hideTop2 && idx < 2
+                            const maskedRank3 = hideRank3 && idx === 2
+                            const maskedRank4 = hideRank4 && idx === 3
+                            const masked = maskedTop2 || maskedRank3 || maskedRank4
 
                             const barColor = idx === 0 ? 'linear-gradient(90deg,#6366f1,#06b6d4)'
                                 : idx === 1 ? 'linear-gradient(90deg,#94a3b8,#cbd5e1)'
