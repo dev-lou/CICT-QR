@@ -10,6 +10,49 @@ import AdminManageData from './components/AdminManageData'
 import Scoreboard from './components/Scoreboard'
 import ScoreHistory from './components/ScoreHistory'
 import PublicScoreboard from './components/PublicScoreboard'
+import { supabase } from './lib/supabase'
+import Swal from 'sweetalert2'
+
+// ─── Global Student Listener ───────────────────────────────────────────────────
+// Listens to the scanning broadcast on ANY page (Dashboard, Logbook, etc.)
+function GlobalStudentListener({ uuid }) {
+    useEffect(() => {
+        if (!uuid || !supabase) return
+
+        let globalChannel = null
+
+        // First resolve the student's DB record to get their generated ID to match the scanner's payload
+        const setupListener = async () => {
+            const { data: student } = await supabase.from('students').select('id, full_name, role').eq('uuid', uuid).single()
+            if (!student) return
+
+            globalChannel = supabase.channel(`scans-${uuid}`)
+                .on('broadcast', { event: 'scan-detected' }, (payload) => {
+                    const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
+                    const action = payload.payload?.type === 'in' ? 'Checked In' : 'Checked Out'
+
+                    Swal.fire({
+                        icon: 'success',
+                        title: `Administrator Successfully Scanned Your QR!`,
+                        text: `You have been ${action} to the Logbook.`,
+                        confirmButtonText: 'Great!',
+                        background: isStaff ? '#4c1d95' : '#047857',
+                        color: '#ffffff',
+                        backdrop: `rgba(0,0,0,0.6)`
+                    })
+                })
+                .subscribe()
+        }
+
+        setupListener()
+
+        return () => {
+            if (globalChannel) supabase.removeChannel(globalChannel)
+        }
+    }, [uuid])
+
+    return null
+}
 
 // ─── Student Auth Guard ───────────────────────────────────────────────────────
 function StudentRoot() {
@@ -35,7 +78,12 @@ function StudentRoot() {
         )
     }
 
-    return <Dashboard uuid={uuid} />
+    return (
+        <>
+            <GlobalStudentListener uuid={uuid} />
+            <Dashboard uuid={uuid} />
+        </>
+    )
 }
 
 import AdminAuditLog from './components/AdminAuditLog'
@@ -133,7 +181,12 @@ function AdminRoot() {
 function LogbookRoute() {
     const uuid = localStorage.getItem('student_uuid')
     if (!uuid) return <Navigate to="/" replace />
-    return <LogbookPage uuid={uuid} />
+    return (
+        <>
+            <GlobalStudentListener uuid={uuid} />
+            <LogbookPage uuid={uuid} />
+        </>
+    )
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────

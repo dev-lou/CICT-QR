@@ -268,16 +268,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         playBeep()
 
-        // Add to batch queue
-        scanQueueRef.current.push(uuid)
-        setQueueSize(scanQueueRef.current.length)
-        setQueuedItems([...scanQueueRef.current])
-        localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
-
-        // Query student details for the modal
+        // 3. Query student details for the modal and broadcast
         try {
             const { data: student } = await supabase.from('students').select('full_name, role').eq('uuid', uuid).single()
             if (student) {
+                // Add to batch queue WITH name for better UI display
+                scanQueueRef.current.push({ uuid, name: student.full_name })
+                setQueueSize(scanQueueRef.current.length)
+                setQueuedItems([...scanQueueRef.current])
+                localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
                 const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
 
                 // 🚀 INSTANT BROADCAST TO STUDENT DASHBOARD
@@ -341,8 +340,10 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     const processScanBatch = async (batch, currentMode) => {
         const results = []
-        for (const uuid of batch) {
-            const trimmed = uuid.trim()
+        for (const item of batch) {
+            // Backward compatibility for generic string arrays from old caches
+            const rawUuid = typeof item === 'string' ? item : item?.uuid
+            const trimmed = rawUuid ? rawUuid.trim() : ''
             if (!trimmed) continue
 
             const { data: student } = await supabase.from('students').select('id, full_name, role').eq('uuid', trimmed).single()
@@ -438,19 +439,24 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     // manual flush action (invoked by button)
     const flushQueue = useCallback(async () => {
-        if (scanQueueRef.current.length === 0) return
+        if (scanQueueRef.current.length === 0) {
+            Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Queue is already empty.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
+            return
+        }
         const batch = scanQueueRef.current.splice(0)
         setQueueSize(scanQueueRef.current.length)
         setQueuedItems([...scanQueueRef.current])
         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
         try {
             await processScanBatch(batch, mode)
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Queue flushed successfully.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
         } catch (e) {
             console.error('manual flush failed', e)
             scanQueueRef.current.unshift(...batch)
             setQueueSize(scanQueueRef.current.length)
             setQueuedItems([...scanQueueRef.current])
             localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+            Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Flush failed. Are you offline?', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
         }
     }, [mode])
 
@@ -1456,13 +1462,27 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         <motion.div key="pending" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                             style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                             <div className="luxury-card" style={{ padding: '1.25rem' }}>
-                                <div style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'white' }}>Pending Scans ({queueSize})</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'white' }}>Pending Scans ({queueSize})</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Because the scanner uses a blocking pop-up, scans usually upload instantly. Items only queue here if you lose internet.</div>
+                                    </div>
+                                    <button onClick={flushQueue} style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: 'rgba(201,168,76,0.1)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.3)', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.2s' }}>
+                                        FORCE FLUSH
+                                    </button>
+                                </div>
                                 {queuedItems.length === 0 ? (
-                                    <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.4)' }}>No pending scans</div>
+                                    <div style={{ marginTop: '1.5rem', padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '1rem', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                                        <div style={{ color: '#10b981', fontWeight: 800, marginBottom: '0.25rem' }}>All Clear!</div>
+                                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8125rem' }}>No pending scans in the background queue.</div>
+                                    </div>
                                 ) : (
                                     <ul style={{ marginTop: '1rem', listStyle: 'none', padding: 0, maxHeight: '300px', overflowY: 'auto' }}>
-                                        {queuedItems.map((u, i) => (
-                                            <li key={i} style={{ padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.875rem' }}>{u}</li>
+                                        {queuedItems.map((item, i) => (
+                                            <li key={i} style={{ padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between' }}>
+                                                <span style={{ fontWeight: 700, color: 'white' }}>{typeof item === 'string' ? 'Unknown Name' : item.name}</span>
+                                                <span style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.3)' }}>{typeof item === 'string' ? item : item.uuid}</span>
+                                            </li>
                                         ))}
                                     </ul>
                                 )}
