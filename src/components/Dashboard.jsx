@@ -54,6 +54,12 @@ export default function Dashboard({ uuid }) {
         const table = isStaff ? 'staff_logbook' : 'logbook'
 
         const channel = supabase.channel(`dashboard-scan-${student.id}`)
+            // Listen for immediate synthetic broadcast from the Admin Scanner (fixes 3-sec queue delay)
+            .on('broadcast', { event: 'scan-detected' }, (payload) => {
+                setScanNotification({ type: payload.payload.type })
+                setTimeout(() => setScanNotification(null), 4000)
+            })
+            // Listen for actual database inserts
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: `student_id=eq.${student.id}` }, (payload) => {
                 setScanNotification({ type: 'in' })
                 setTimeout(() => setScanNotification(null), 4000)

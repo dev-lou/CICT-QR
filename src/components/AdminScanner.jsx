@@ -250,45 +250,74 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
     }, [mode])
 
-    // push decoded text into a queue for later processing; immediate beep & toast
+    // push decoded text into a queue for later processing; immediate blocking modal & broadcast
     const handleScan = useCallback(async (decodedText) => {
+        // Prevent re-entry if admin hasn't clicked OK or if it's processing
+        if (processingRef.current) return
+        processingRef.current = true
+
         const uuid = decodedText.trim()
         const now = Date.now()
 
-        // 1. Debounce (3 seconds per UUID) to prevent rapid duplicate queuing
+        // Debounce just in case
         if (recentScansRef.current[uuid] && now - recentScansRef.current[uuid] < 3000) {
+            processingRef.current = false
             return
         }
         recentScansRef.current[uuid] = now
 
-        // 2. Play early beep
         playBeep()
 
-        // 3. Add to queue immediately for background processing
+        // Add to batch queue
         scanQueueRef.current.push(uuid)
         setQueueSize(scanQueueRef.current.length)
         setQueuedItems([...scanQueueRef.current])
         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
 
-        // 4. Immediate visual feedback (toast)
+        // Query student details for the modal
         try {
             const { data: student } = await supabase.from('students').select('full_name, role').eq('uuid', uuid).single()
             if (student) {
                 const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
-                Swal.fire({
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 2500,
+
+                // 🚀 INSTANT BROADCAST TO STUDENT DASHBOARD
+                // This triggers their screen immediately before the 3s database queue finishes
+                try {
+                    await supabase.channel(`scans-${uuid}`).send({
+                        type: 'broadcast',
+                        event: 'scan-detected',
+                        payload: { type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
+                    })
+                } catch (e) { console.error('Broadcast failed', e) }
+
+                // Blocking Admin Modal
+                await Swal.fire({
                     icon: 'success',
-                    title: `${isStaff ? '⭐' : '🎓'} ${mode === 'time-in' ? 'In' : 'Out'}: ${student.full_name}`,
-                    background: isStaff ? '#4c1d95' : '#047857',
-                    color: '#fff'
+                    title: `${isStaff ? '⭐' : '🎓'} ${mode === 'time-in' ? 'Checked In' : 'Checked Out'}`,
+                    text: student.full_name,
+                    confirmButtonText: 'OK',
+                    confirmButtonColor: '#10b981',
+                    background: '#1e293b',
+                    color: '#fff',
+                    allowOutsideClick: false, // Force them to click OK
+                    allowEscapeKey: false
                 })
             }
         } catch (e) {
-            // Background queue will handle actual DB processing even if toast fails
+            // Failsafe error
+            await Swal.fire({
+                icon: 'error',
+                title: 'Unrecognized QR',
+                text: 'This QR code is not registered.',
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#ef4444',
+                background: '#1e293b',
+                color: '#fff'
+            })
         }
+
+        // Allow next scan only after OK is clicked
+        processingRef.current = false
     }, [playBeep, mode])
 
     const startScanner = useCallback(async () => {
