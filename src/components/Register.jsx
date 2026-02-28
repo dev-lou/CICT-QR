@@ -261,9 +261,7 @@ export default function Register({ onRegistered }) {
                     </div>
                 </motion.div>
             </div>
-            <p style={{ position: 'fixed', bottom: '1.5rem', left: 0, right: 0, textAlign: 'center', fontSize: '0.625rem', color: 'rgba(255,255,255,0.15)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', pointerEvents: 'none' }}>DESIGNED & DEVELOPED BY LOU VINCENT BARORO</p>
+            <p style={{ position: 'absolute', bottom: '1.5rem', left: 0, right: 0, textAlign: 'center', fontSize: '0.625rem', color: 'rgba(255,255,255,0.15)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', pointerEvents: 'none', margin: 0 }}>DESIGNED & DEVELOPED BY LOU VINCENT BARORO</p>
         </>
     )
 }
-
-
