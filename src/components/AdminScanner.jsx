@@ -272,52 +272,98 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         try {
             const { data: student } = await supabase.from('students').select('full_name, role').eq('uuid', uuid).single()
             if (student) {
-                // Add to batch queue WITH name for better UI display
-                scanQueueRef.current.push({ uuid, name: student.full_name })
-                setQueueSize(scanQueueRef.current.length)
-                setQueuedItems([...scanQueueRef.current])
-                localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
                 const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
 
-                // 🚀 INSTANT BROADCAST TO STUDENT DASHBOARD
-                // This triggers their screen immediately before the 3s database queue finishes
-                try {
-                    await supabase.channel(`scans-${uuid}`).send({
-                        type: 'broadcast',
-                        event: 'scan-detected',
-                        payload: { type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
-                    })
-                } catch (e) { console.error('Broadcast failed', e) }
+                // 🚀 INSTANT DATABASE INSERT
+                let dbStatus = 'error'
+                if (navigator.onLine) {
+                    const results = await processScanBatch([{ uuid, name: student.full_name }], mode)
+                    if (results.length > 0) dbStatus = results[0].status
+                }
 
-                // Blocking Admin Modal
-                await Swal.fire({
-                    icon: 'success',
-                    title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">${isStaff ? '⭐' : '🎓'} ${mode === 'time-in' ? 'CHECKED IN' : 'CHECKED OUT'}</span>`,
-                    html: `<div style="color: #C9A84C; font-size: 1.125rem; font-weight: 900; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name}</div>`,
-                    confirmButtonText: 'SCAN NEXT',
-                    confirmButtonColor: '#10b981',
-                    background: '#1e293b',
-                    color: '#ffffff',
-                    backdrop: `rgba(15,23,42,0.85)`,
-                    padding: '2rem',
-                    allowOutsideClick: false, // Force them to click OK
-                    allowEscapeKey: false,
-                    customClass: {
-                        popup: 'luxury-swal-popup',
-                        confirmButton: 'luxury-swal-btn'
+                if (dbStatus === 'duplicate') {
+                    await Swal.fire({
+                        icon: 'info',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">ALREADY SCANNED</span>`,
+                        html: `<div style="color: #64748b; font-size: 1rem; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name} is already checked in.</div>`,
+                        confirmButtonText: 'SCAN NEXT',
+                        confirmButtonColor: '#3b82f6',
+                        background: '#1e293b',
+                        color: '#ffffff',
+                        backdrop: `rgba(15,23,42,0.85)`,
+                        padding: '2rem',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                    })
+                } else if (dbStatus === 'not_checked_in') {
+                    await Swal.fire({
+                        icon: 'warning',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">NOT LOGGED IN</span>`,
+                        html: `<div style="color: #f59e0b; font-size: 1rem; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name}cannot check out before checking in.</div>`,
+                        confirmButtonText: 'SCAN NEXT',
+                        confirmButtonColor: '#f59e0b',
+                        background: '#1e293b',
+                        color: '#ffffff',
+                        backdrop: `rgba(15,23,42,0.85)`,
+                        padding: '2rem',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                    })
+                } else {
+                    if (dbStatus === 'error' || !navigator.onLine) {
+                        // OFFLINE QUEUE: Only queue if the internet or database fails
+                        scanQueueRef.current.push({ uuid, name: student.full_name })
+                        setQueueSize(scanQueueRef.current.length)
+                        setQueuedItems([...scanQueueRef.current])
+                        localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+                    } else {
+                        // SUCCESS! Broadcast to Global Student Listener
+                        try {
+                            await supabase.channel(`scans-${uuid}`).send({
+                                type: 'broadcast',
+                                event: 'scan-detected',
+                                payload: { type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
+                            })
+                        } catch (e) { console.error('Broadcast failed', e) }
                     }
-                })
+
+                    // Blocking Admin Modal
+                    await Swal.fire({
+                        icon: dbStatus === 'error' ? 'info' : 'success',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">${isStaff ? '⭐' : '🎓'} ${dbStatus === 'error' ? 'SAVED OFFLINE' : (mode === 'time-in' ? 'CHECKED IN' : 'CHECKED OUT')}</span>`,
+                        html: `<div style="color: ${dbStatus === 'error' ? '#f59e0b' : '#C9A84C'}; font-size: 1.125rem; font-weight: 900; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name}</div>`,
+                        confirmButtonText: 'SCAN NEXT',
+                        confirmButtonColor: dbStatus === 'error' ? '#f59e0b' : '#10b981',
+                        background: '#1e293b',
+                        color: '#ffffff',
+                        backdrop: `rgba(15,23,42,0.85)`,
+                        padding: '2rem',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        customClass: {
+                            popup: 'luxury-swal-popup',
+                            confirmButton: 'luxury-swal-btn'
+                        }
+                    })
+                }
             }
         } catch (e) {
-            // Failsafe error
+            // Failsafe error (e.g. invalid QR or connection failure during lookup)
             await Swal.fire({
                 icon: 'error',
-                title: 'Unrecognized QR',
-                text: 'This QR code is not registered.',
-                confirmButtonText: 'OK',
+                title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">UNRECOGNIZED QR</span>`,
+                html: `<div style="color: #ef4444; font-size: 1rem; margin-top: 0.5rem;">This QR code is not registered or you are offline.</div>`,
+                confirmButtonText: 'SCAN NEXT',
                 confirmButtonColor: '#ef4444',
                 background: '#1e293b',
-                color: '#fff'
+                color: '#ffffff',
+                backdrop: `rgba(15,23,42,0.85)`,
+                padding: '2rem',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
             })
         }
 
@@ -392,9 +438,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         return results
     }
 
-    // start a periodic flush of the scan queue
+    // Restore offline queue on mount
     useEffect(() => {
-        // restore queue from localStorage when component mounts
         const saved = localStorage.getItem('scanQueue')
         if (saved) {
             try { scanQueueRef.current = JSON.parse(saved) || [] } catch { };
@@ -407,38 +452,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
         window.addEventListener('beforeunload', saveOnUnload)
 
-        queueFlushInterval.current = setInterval(async () => {
-            if (scanQueueRef.current.length === 0 || !navigator.onLine) return
-            const batch = scanQueueRef.current.splice(0)
-            setQueueSize(scanQueueRef.current.length)
-            setQueuedItems([...scanQueueRef.current])
-
-            // persist remaining queue
-            localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
-
-            // Process directly on client instead of relying on the Vercel edge/serverless function
-            try {
-                const results = await processScanBatch(batch, mode)
-                const errors = results.filter(r => r.status === 'error')
-                if (errors.length > 0) {
-                    Swal.fire({
-                        icon: 'warning',
-                        title: 'Partial failure',
-                        html: errors.map(e => `${e.uuid}: ${e.status}${e.message ? ' (' + e.message + ')' : ''}`).join('<br>'),
-                        background: '#1e293b', color: '#fff'
-                    })
-                }
-            } catch (e) {
-                console.error('batch process failed', e)
-                // leave batch items unprocessed so they will be retried next interval
-                scanQueueRef.current.unshift(...batch)
-                setQueueSize(scanQueueRef.current.length)
-                setQueuedItems([...scanQueueRef.current])
-                localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
-            }
-        }, 5000) // Changed from 3000 to 5000ms to allow admins to see the queue build up momentarily if desired
         return () => {
-            clearInterval(queueFlushInterval.current)
             window.removeEventListener('beforeunload', saveOnUnload)
         }
     }, [mode])
@@ -1470,8 +1484,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             <div className="luxury-card" style={{ padding: '1.25rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
-                                        <div style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'white' }}>Pending Scans ({queueSize})</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Scans are held here for 5 seconds before uploading to the database.</div>
+                                        <div style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'white' }}>Offline Sync Queue ({queueSize})</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Because scanning is completely instant, items only appear here if you lose internet connection.</div>
                                     </div>
                                     <button onClick={flushQueue} style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: 'rgba(201,168,76,0.1)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.3)', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.2s' }}>
                                         SYNC NOW
