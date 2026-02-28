@@ -133,6 +133,60 @@ export default function AdminManageData({ onLogout, onNavigateScanner, onNavigat
         }
     }
 
+    const recalculateTotals = async () => {
+        const result = await Swal.fire({
+            title: 'Recalculate All Totals?',
+            text: 'This will sync the Point Standings by calculating: 150 + sum(all logs) for every team. Use this if your scoreboard is out of sync.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#C9A84C',
+            confirmButtonText: 'Yes, Recalculate',
+            background: '#1e293b',
+            color: '#fff'
+        })
+        if (!result.isConfirmed) return
+
+        Swal.fire({
+            title: 'Processing...',
+            text: 'Synchronizing central ledger...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+            background: '#1e293b',
+            color: '#fff'
+        })
+
+        try {
+            const { data: logs } = await supabase.from('score_logs').select('team_name, delta')
+            const { data: teamsList } = await supabase.from('teams').select('id, name')
+
+            const updates = teamsList.map(async (team) => {
+                const teamLogs = (logs || []).filter(l => l.team_name === team.name)
+                const logSum = teamLogs.reduce((sum, l) => sum + Number(l.delta), 0)
+                const finalScore = 150 + logSum
+                return supabase.from('teams').update({ score: finalScore }).eq('id', team.id)
+            })
+
+            await Promise.all(updates)
+            await fetchTeams()
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Sync Complete',
+                text: 'All team scores have been recalculated from the logs.',
+                background: '#1e293b',
+                color: '#fff'
+            })
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Sync Failed',
+                text: err.message,
+                background: '#1e293b',
+                color: '#fff'
+            })
+        }
+    }
+
 
     const addEvent = async () => {
         if (!newEventName.trim() || !supabase) return
@@ -155,6 +209,52 @@ export default function AdminManageData({ onLogout, onNavigateScanner, onNavigat
             if (error) throw error
             await fetchTeams()
         } catch (err) { alert(err.message || 'Failed to delete event.') }
+    }
+
+    const deleteScoreLog = async (log) => {
+        const result = await Swal.fire({
+            title: 'Delete this score?',
+            text: `Permanently remove ${log.delta} pts from ${log.team_name}?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'Yes, delete it',
+            background: '#1e293b',
+            color: '#fff'
+        })
+
+        if (result.isConfirmed) {
+            try {
+                // 1. Get current team score
+                const { data: team } = await supabase.from('teams').select('id, score').eq('name', log.team_name).single()
+
+                if (team) {
+                    // 2. Update team score (subtract the delta we're deleting)
+                    const newScore = Math.max(0, (team.score || 150) - log.delta)
+                    await supabase.from('teams').update({ score: newScore }).eq('id', team.id)
+                }
+
+                // 3. Delete the log
+                const { error } = await supabase.from('score_logs').delete().eq('id', log.id)
+                if (error) throw error
+
+                await createAuditLog('DELETE_SCORE', log.team_name, `Deleted ${log.delta} pts record: ${log.reason}`)
+
+                await Promise.all([fetchTeams(), fetchScoreLogs()])
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Deleted',
+                    text: 'Score removed and standings updated.',
+                    background: '#1e293b',
+                    color: '#fff',
+                    timer: 2000,
+                    showConfirmButton: false
+                })
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#1e293b', color: '#fff' })
+            }
+        }
     }
 
 
@@ -313,9 +413,14 @@ export default function AdminManageData({ onLogout, onNavigateScanner, onNavigat
                                     <p style={{ fontWeight: 800, color: '#C9A84C', fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
                                         ACTIVE TEAMS ({teams.length})
                                     </p>
-                                    <button onClick={initializeScores} style={{ fontSize: '0.625rem', fontWeight: 800, color: '#C9A84C', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', cursor: 'pointer', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', textTransform: 'uppercase' }}>
-                                        Initialize Scores
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                        <button onClick={recalculateTotals} style={{ fontSize: '0.625rem', fontWeight: 800, color: '#C9A84C', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', cursor: 'pointer', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', textTransform: 'uppercase' }}>
+                                            Recalculate Totals
+                                        </button>
+                                        <button onClick={initializeScores} style={{ fontSize: '0.625rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', textTransform: 'uppercase' }}>
+                                            Reset to 150
+                                        </button>
+                                    </div>
                                 </div>
                                 {teamsLoading ? (
                                     <div style={{ padding: '4rem 0', display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'center' }}>
@@ -576,10 +681,15 @@ export default function AdminManageData({ onLogout, onNavigateScanner, onNavigat
                                                     <p style={{ fontWeight: 800, fontSize: '0.875rem', color: 'white', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.team_name}</p>
                                                     <p style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.reason}</p>
                                                 </div>
-                                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                                <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                                     <p style={{ fontWeight: 900, fontSize: '1rem', color: entry.delta > 0 ? '#10b981' : '#ef4444', margin: 0 }}>
                                                         {entry.delta > 0 ? `+${entry.delta}` : entry.delta}
                                                     </p>
+                                                    <button onClick={() => deleteScoreLog(entry)} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.15)', cursor: 'pointer', padding: '0.25rem', transition: 'all 0.2s' }}
+                                                        onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.borderRadius = '0.375rem'; }}
+                                                        onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.15)'; e.currentTarget.style.background = 'transparent'; }}>
+                                                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                    </button>
                                                 </div>
                                             </motion.div>
                                         ))}
