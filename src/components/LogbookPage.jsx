@@ -374,7 +374,7 @@ export default function LogbookPage({ uuid }) {
                 </div>
 
                 <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: 'rgba(255,255,255,0.2)', marginTop: '2.5rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                    Built by Lou Vincent Baroro
+                    DESIGNED & DEVELOPED BY LOU VINCENT BARORO
                 </p>
             </main>
         </div>

@@ -425,7 +425,7 @@ export default function Dashboard({ uuid }) {
                         </a>
                     )}
 
-                    <p style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.15)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', pointerEvents: 'none', margin: 0 }}>Built by Lou Vincent Baroro</p>
+                    <p style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.15)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', pointerEvents: 'none', margin: 0 }}>DESIGNED & DEVELOPED BY LOU VINCENT BARORO</p>
                 </div>
             </div>
         </div>

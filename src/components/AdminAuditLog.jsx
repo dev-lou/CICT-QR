@@ -177,8 +177,12 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
         <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: 'Inter, system-ui, sans-serif' }}>
             <style>{`
                 .glass-panel { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.05); }
-                .tab-nav-luxury { display: flex; background: rgba(0,0,0,0.3); padding: 0.375rem; border-radius: 1.25rem; border: 1px solid rgba(255,255,255,0.05); gap: 0.5rem; }
-                .tab-btn-luxury { padding: 0.625rem 1.25rem; border-radius: 0.875rem; border: none; background: transparent; color: rgba(255,255,255,0.4); font-weight: 700; font-size: 0.875rem; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; gap: 0.5rem; }
+                .tab-nav-luxury { display: flex; background: rgba(0,0,0,0.3); padding: 0.25rem; border-radius: 1.25rem; border: 1px solid rgba(255,255,255,0.05); gap: 0.25rem; justify-content: center; width: 100%; }
+                .tab-btn-luxury { flex: 1; padding: 0.5rem 0.25rem; border-radius: 1rem; border: none; background: transparent; color: rgba(255,255,255,0.4); font-weight: 800; font-size: 0.625rem; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; align-items: center; gap: 0.25rem; text-align: center; line-height: 1.1; min-width: 0; }
+                @media (min-width: 640px) {
+                    .tab-btn-luxury { flex-direction: row; padding: 0.625rem 1.25rem; font-size: 0.875rem; gap: 0.5rem; }
+                    .tab-nav-luxury { gap: 0.5rem; padding: 0.375rem; width: auto; }
+                }
                 .tab-btn-luxury.active { background: rgba(201,168,76,0.1); color: #C9A84C; border: 1px solid rgba(201,168,76,0.25); box-shadow: 0 4px 15px rgba(201,168,76,0.1); }
                 .luxury-input { width: 100%; padding: 0.875rem 1.125rem; border-radius: 1rem; border: 1.5px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); color: white; outline: none; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
                 .luxury-input:focus { border-color: #C9A84C; background: rgba(201,168,76,0.05); box-shadow: 0 0 20px rgba(201,168,76,0.1); }

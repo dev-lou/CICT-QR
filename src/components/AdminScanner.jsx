@@ -470,7 +470,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             })
             doc.setFontSize(8)
             doc.setTextColor(180)
-            doc.text('Built by Lou Vincent Baroro', 14, doc.internal.pageSize.height - 8)
+            doc.text('DESIGNED & DEVELOPED BY LOU VINCENT BARORO', 14, doc.internal.pageSize.height - 8)
             const fileSuffix = numChunks > 1 ? `_Part${i + 1}` : ''
             doc.save(`IT-Week-Attendance-${dayFilter}${fileSuffix}.pdf`)
         }
@@ -532,7 +532,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             })
             doc.setFontSize(8)
             doc.setTextColor(180)
-            doc.text('Built by Lou Vincent Baroro', 14, doc.internal.pageSize.height - 8)
+            doc.text('DESIGNED & DEVELOPED BY LOU VINCENT BARORO', 14, doc.internal.pageSize.height - 8)
             const fileSuffix = numChunks > 1 ? `_Part${i + 1}` : ''
             doc.save(`IT-Week-Staff-${staffDayFilter}${fileSuffix}.pdf`)
         }
@@ -857,16 +857,21 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                         <button onClick={flushQueue} style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.75rem', background: '#C9A84C', color: '#0f172a', marginLeft: '1rem' }}>Flush Now</button>
                                     )}
                                 </div>
-                                <button
-                                    onClick={scanning ? stopScanner : startScanner}
-                                    style={{
-                                        padding: '0.625rem 1.5rem', borderRadius: '0.875rem', fontWeight: 900, fontSize: '0.8125rem', cursor: 'pointer', fontFamily: 'inherit',
-                                        background: scanning ? 'rgba(239, 68, 68, 0.1)' : 'linear-gradient(135deg, #7B1C1C, #C9A84C)',
-                                        color: scanning ? '#ef4444' : 'white',
-                                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                                        border: scanning ? '1px solid rgba(239, 68, 68, 0.2)' : 'none'
-                                    }}
-                                >{scanning ? 'Stop Scanner' : 'Open Scanner'}</button>
+                                <div style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'center' }}>
+                                    <button
+                                        onClick={scanning ? stopScanner : startScanner}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.875rem 1.5rem', borderRadius: '1rem', fontWeight: 900, fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit',
+                                            background: scanning ? 'rgba(239, 68, 68, 0.1)' : 'linear-gradient(135deg, #7B1C1C, #C9A84C)',
+                                            color: scanning ? '#ef4444' : 'white',
+                                            textTransform: 'uppercase', letterSpacing: '0.05em',
+                                            border: scanning ? '1px solid rgba(239, 68, 68, 0.2)' : 'none',
+                                            boxShadow: scanning ? 'none' : '0 4px 15px rgba(201, 168, 76, 0.2)',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >{scanning ? 'Stop Scanner' : 'Open Scanner'}</button>
+                                </div>
                             </div>
                             <div style={{ background: '#000', position: 'relative', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <div id="qr-reader" style={{ width: '100%', maxWidth: '500px' }} />
@@ -1382,6 +1387,25 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
                     {/* Removed Teams, Scores, and Users Tabs -> relocated to AdminManageData */}
                 </AnimatePresence>
+            </div>
+
+            {/* Developer Credit Footer */}
+            <div style={{
+                padding: '2.5rem 1.5rem 3.5rem',
+                display: 'flex',
+                justifyContent: 'center',
+                background: 'linear-gradient(to top, rgba(15, 23, 42, 0.8), transparent)',
+                pointerEvents: 'none'
+            }}>
+                <p style={{
+                    fontSize: '0.625rem',
+                    color: 'rgba(255,255,255,0.15)',
+                    fontWeight: 700,
+                    letterSpacing: '0.15em',
+                    textTransform: 'uppercase'
+                }}>
+                    DESIGNED & DEVELOPED BY LOU VINCENT BARORO
+                </p>
             </div>
         </div>
     )
