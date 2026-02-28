@@ -7,7 +7,7 @@ import CustomDropdown from './CustomDropdown'
 
 export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateManageData, onNavigateTally, onNavigateHistory }) {
     const navigate = useNavigate()
-    const [activeTab, setActiveTab] = useState('logs') // 'logs' or 'users'
+    const [activeTab, setActiveTab] = useState('logs') // 'logs', 'users', 'demographics'
     const [logs, setLogs] = useState([])
     const [loading, setLoading] = useState(false)
     const [search, setSearch] = useState('')
@@ -159,6 +159,17 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
     const userTotalPages = Math.ceil(filteredUsers.length / userPageSize)
     const paginatedUsers = filteredUsers.slice((userPage - 1) * userPageSize, userPage * userPageSize)
 
+    // ─── Demographics Calculations
+    const teamStats = teams.map(t => {
+        const count = users.filter(u => u.team_name === t.name).length
+        return { name: t.name, count }
+    }).sort((a, b) => b.count - a.count)
+    const maxTeamCount = Math.max(...teamStats.map(t => t.count), 1)
+
+    const execCount = users.filter(u => u.role === 'executive').length
+    const officerCount = users.filter(u => u.role === 'officer').length
+    const maxRoleCount = Math.max(execCount, officerCount, 1)
+
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
     const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : ''
 
@@ -261,6 +272,10 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
                             <button onClick={() => setActiveTab('users')} className={`tab-btn-luxury ${activeTab === 'users' ? 'active' : ''}`}>
                                 <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
                                 PERSONNEL DATABASE
+                            </button>
+                            <button onClick={() => setActiveTab('demographics')} className={`tab-btn-luxury ${activeTab === 'demographics' ? 'active' : ''}`}>
+                                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>
+                                OVERVIEW & DEMOGRAPHICS
                             </button>
                         </div>
                     </div>
@@ -396,7 +411,7 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
                                     )}
                                 </div>
                             </motion.div>
-                        ) : (
+                        ) : activeTab === 'users' ? (
                             <motion.div key="users" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
                                 style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
@@ -613,7 +628,122 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
                                     )}
                                 </div>
                             </motion.div>
-                        )}
+                        ) : activeTab === 'demographics' ? (
+                            <motion.div key="demographics" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+                                style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+
+                                {/* Top Status Cards */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+                                    <div className="luxury-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', position: 'relative', overflow: 'hidden' }}>
+                                        <div style={{ position: 'absolute', right: '-1rem', top: '-1rem', opacity: 0.05, color: '#C9A84C' }}>
+                                            <svg width="120" height="120" fill="currentColor" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
+                                        </div>
+                                        <h3 style={{ fontSize: '0.6875rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Total Registered Population</h3>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                                            <span style={{ fontSize: '3rem', fontWeight: 900, color: '#C9A84C', lineHeight: 1 }}>{users.length}</span>
+                                            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'white' }}>ENTITIES</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="luxury-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(201,168,76,0.05)', border: '1px solid rgba(201,168,76,0.2)' }}>
+                                        <h3 style={{ fontSize: '0.6875rem', fontWeight: 900, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Total Enlisted Executives</h3>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                                            <span style={{ fontSize: '2.5rem', fontWeight: 900, color: 'white', lineHeight: 1 }}>{execCount}</span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>EXECUTIVES</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="luxury-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.2)' }}>
+                                        <h3 style={{ fontSize: '0.6875rem', fontWeight: 900, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Total Enlisted Officers</h3>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                                            <span style={{ fontSize: '2.5rem', fontWeight: 900, color: 'white', lineHeight: 1 }}>{officerCount}</span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>OFFICERS</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Graph Layout */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
+
+                                    {/* Team Distribution Graph */}
+                                    <div className="luxury-card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                        <h3 style={{ fontSize: '1rem', fontWeight: 900, color: 'white', letterSpacing: '0.05em', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                            <div style={{ width: '4px', height: '1.25rem', background: '#C9A84C', borderRadius: '2px' }} />
+                                            TEAM AFFILIATION DISTRIBUTION
+                                        </h3>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                            {teamStats.map((team, idx) => {
+                                                const percentage = Math.max((team.count / maxTeamCount) * 100, 2)
+                                                return (
+                                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <span style={{ fontSize: '0.8125rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)' }}>{team.name}</span>
+                                                            <span style={{ fontSize: '0.8125rem', fontWeight: 900, color: '#C9A84C' }}>{team.count}</span>
+                                                        </div>
+                                                        <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                                                            <motion.div
+                                                                initial={{ width: 0 }}
+                                                                animate={{ width: `${percentage}%` }}
+                                                                transition={{ duration: 1, delay: idx * 0.1, ease: "easeOut" }}
+                                                                style={{ height: '100%', background: 'linear-gradient(90deg, #7B1C1C, #C9A84C)', borderRadius: '4px' }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Role Comparison Graph */}
+                                    <div className="luxury-card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignSelf: 'flex-start' }}>
+                                        <h3 style={{ fontSize: '1rem', fontWeight: 900, color: 'white', letterSpacing: '0.05em', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                            <div style={{ width: '4px', height: '1.25rem', background: '#3b82f6', borderRadius: '2px' }} />
+                                            ADMINISTRATIVE ROLE COMPARISON
+                                        </h3>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', padding: '1rem 0' }}>
+
+                                            {/* Executive Bar */}
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '0.8125rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#C9A84C' }} /> EXECUTIVES
+                                                    </span>
+                                                    <span style={{ fontSize: '0.8125rem', fontWeight: 900, color: '#C9A84C' }}>{execCount}</span>
+                                                </div>
+                                                <div style={{ width: '100%', height: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
+                                                    <motion.div
+                                                        initial={{ width: 0 }}
+                                                        animate={{ width: `${Math.max((execCount / maxRoleCount) * 100, 2)}%` }}
+                                                        transition={{ duration: 1, ease: "easeOut" }}
+                                                        style={{ height: '100%', background: 'linear-gradient(90deg, rgba(201,168,76,0.6), #C9A84C)', borderRadius: '6px' }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Officer Bar */}
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '0.8125rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }} /> OFFICERS
+                                                    </span>
+                                                    <span style={{ fontSize: '0.8125rem', fontWeight: 900, color: '#3b82f6' }}>{officerCount}</span>
+                                                </div>
+                                                <div style={{ width: '100%', height: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
+                                                    <motion.div
+                                                        initial={{ width: 0 }}
+                                                        animate={{ width: `${Math.max((officerCount / maxRoleCount) * 100, 2)}%` }}
+                                                        transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
+                                                        style={{ height: '100%', background: 'linear-gradient(90deg, rgba(59,130,246,0.6), #3b82f6)', borderRadius: '6px' }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </motion.div>
+                        ) : null}
                     </AnimatePresence>
                 </div>
             </main>

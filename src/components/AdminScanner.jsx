@@ -314,7 +314,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 setQueuedItems([...scanQueueRef.current])
                 localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
             }
-        }, 1000)
+        }, 3000)
         return () => {
             clearInterval(queueFlushInterval.current)
             window.removeEventListener('beforeunload', saveOnUnload)

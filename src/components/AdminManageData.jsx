@@ -38,33 +38,6 @@ export default function AdminManageData({ onLogout, onNavigateScanner, onNavigat
     const [scorePage, setScorePage] = useState(1)
     const scorePageSize = 10
 
-    const clearScoreHistory = async () => {
-        const result = await Swal.fire({
-            title: 'Purge Activity Logs?',
-            text: 'This will permanently remove the recent history feed. Team totals will remain unaffected.',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#dc2626',
-            confirmButtonText: 'Yes, clear it',
-            background: '#1e293b',
-            color: '#fff'
-        })
-
-        if (result.isConfirmed) {
-            await supabase.from('score_logs').delete().neq('id', 0)
-            fetchScoreLogs()
-            Swal.fire({
-                toast: true,
-                position: 'top-end',
-                icon: 'success',
-                title: 'Activity History Purged',
-                showConfirmButton: false,
-                timer: 2000,
-                background: '#0f172a',
-                color: '#fff'
-            })
-        }
-    }
 
 
     // ─── Events state
@@ -590,10 +563,6 @@ export default function AdminManageData({ onLogout, onNavigateScanner, onNavigat
                                 <div className="luxury-card" style={{ padding: '1.5rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
                                         <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 900, color: 'white', letterSpacing: '0.1em' }}>RECENT ACTIVITY</h4>
-                                        <button onClick={clearScoreHistory}
-                                            style={{ fontSize: '0.625rem', fontWeight: 800, color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', textTransform: 'uppercase' }}>
-                                            Clear Recent History
-                                        </button>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                         {scoreLog.slice((scorePage - 1) * scorePageSize, scorePage * scorePageSize).map((entry, i) => (
