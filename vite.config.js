@@ -16,7 +16,7 @@ export default defineConfig({
         short_name: 'IT Week QR',
         description: 'ISUFST CICT IT Week 2026 QR Attendance and Live Scoreboard System',
         theme_color: '#800000',
-        background_color: '#ffffff',
+        background_color: '#0f0f0f',
         display: 'standalone',
         orientation: 'portrait',
         categories: ['education', 'productivity', 'events'],
