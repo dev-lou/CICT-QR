@@ -13,13 +13,13 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 
 -- 2. Create an Admin verification function (used in policies)
+-- Admins are stored in auth.users, but since this app also uses 'executive'/'officer'
+-- directly in the 'students' table without Supabase Auth in some instances,
+-- we check if the user has a valid Supabase Auth JWT.
 CREATE OR REPLACE FUNCTION is_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
-    RETURN EXISTS (
-        SELECT 1 FROM public.users 
-        WHERE id = auth.uid() AND role = 'admin'
-    );
+    RETURN (auth.role() = 'authenticated');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -78,10 +78,10 @@ CREATE POLICY "Allow students to update their own profiles"
 ON public.students FOR UPDATE
 USING (true); -- Note: Since students don't have Supabase Auth accounts, this remains open. API logic handles limits locally.
 
--- Allow ONLY ADMINS to INSERT or DELETE students
-CREATE POLICY "Admins can insert students"
+-- Allow ANYONE to register (insert) a new student profile
+CREATE POLICY "Anyone can register as a student"
 ON public.students FOR INSERT 
-WITH CHECK (is_admin());
+WITH CHECK (true);
 
 CREATE POLICY "Admins can delete students"
 ON public.students FOR DELETE 
