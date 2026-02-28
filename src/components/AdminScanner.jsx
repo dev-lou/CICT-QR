@@ -281,13 +281,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     if (results.length > 0) dbStatus = results[0].status
                 }
 
-                if (dbStatus === 'duplicate') {
+                if (dbStatus === 'duplicate' || dbStatus === 'already_scanned_today') {
                     await Swal.fire({
-                        icon: 'info',
-                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">ALREADY SCANNED</span>`,
-                        html: `<div style="color: #64748b; font-size: 1rem; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name} is already checked in.</div>`,
+                        icon: 'warning',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">ALREADY SCANNED TODAY</span>`,
+                        html: `<div style="color: #f59e0b; font-size: 1rem; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name} has already been checked in today.</div>`,
                         confirmButtonText: 'SCAN NEXT',
-                        confirmButtonColor: '#3b82f6',
+                        confirmButtonColor: '#f59e0b',
                         background: '#1e293b',
                         color: '#ffffff',
                         backdrop: `rgba(15,23,42,0.85)`,
@@ -408,11 +408,41 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             const table = isStaff ? 'staff_logbook' : 'logbook'
 
             if (currentMode === 'time-in') {
+                // Calculate today's boundaries in Philippine Time (PHT: UTC+8)
+                const now = new Date()
+                const phtOffset = 8 * 60 * 60 * 1000
+                const phtNow = new Date(now.getTime() + phtOffset)
+
+                // Get start of today (00:00:00) in PHT, converted back to UTC string for DB
+                const todayStartPHT = new Date(phtNow)
+                todayStartPHT.setUTCHours(0, 0, 0, 0)
+                const todayStartUTC = new Date(todayStartPHT.getTime() - phtOffset).toISOString()
+
+                // Get end of today (23:59:59) in PHT, converted back to UTC string for DB
+                const todayEndPHT = new Date(phtNow)
+                todayEndPHT.setUTCHours(23, 59, 59, 999)
+                const todayEndUTC = new Date(todayEndPHT.getTime() - phtOffset).toISOString()
+
+                // 1. Check for Active Session (already checked in but not out)
                 const { data: existing } = await supabase.from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
                 if (existing && existing.length > 0) {
                     results.push({ uuid: trimmed, status: 'duplicate' })
                     continue
                 }
+
+                // 2. Check for Same-Day Scanning (checked in at all today, even if checked out)
+                const { data: todayRecords } = await supabase.from(table)
+                    .select('id')
+                    .eq('student_id', student.id)
+                    .gte('time_in', todayStartUTC)
+                    .lte('time_in', todayEndUTC)
+                    .limit(1)
+
+                if (todayRecords && todayRecords.length > 0) {
+                    results.push({ uuid: trimmed, status: 'already_scanned_today' })
+                    continue
+                }
+
                 const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
                 if (insertErr) {
                     results.push({ uuid: trimmed, status: 'error', message: insertErr.message })

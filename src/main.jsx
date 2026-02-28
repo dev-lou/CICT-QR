@@ -4,10 +4,15 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
 
-// Register PWA service worker (auto updates)
+// Register PWA service worker with forced silent reload on new deployments
 import { registerSW } from 'virtual:pwa-register'
-registerSW({ immediate: true })
-
+registerSW({
+    immediate: true,
+    onNeedRefresh() {
+        // Force the browser to bypass cache and fetch the new update instantly
+        window.location.reload(true)
+    }
+})
 ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
         <BrowserRouter>
