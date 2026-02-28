@@ -142,8 +142,7 @@ export default function LogbookPage({ uuid }) {
                     </motion.button>
 
                     <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                        <h1 style={{ fontWeight: 900, fontSize: '0.9375rem', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem', margin: 0, overflow: 'hidden' }}>
-                            <span style={{ color: '#C9A84C', flexShrink: 0, fontSize: '0.75rem' }}>PROTOCOL:</span>
+                        <h1 style={{ fontWeight: 900, fontSize: '0.8125rem', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem', margin: 0, overflow: 'hidden' }}>
                             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {myRole === 'leader' || myRole === 'facilitator' || myRole === 'executive' || myRole === 'officer' ? 'STAFF LOGBOOK' : 'ATTENDANCE LOG'}
                             </span>
