@@ -43,8 +43,8 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
                     border: '1.5px solid',
                     borderColor: isOpen
                         ? (dark ? '#C9A84C' : '#7B1C1C')
-                        : (dark ? 'rgba(255,255,255,0.1)' : '#e2e8f0'),
-                    background: dark ? 'rgba(255,255,255,0.03)' : '#ffffff',
+                        : (dark ? 'rgba(201,168,76,0.4)' : '#e2e8f0'),
+                    background: dark ? 'rgba(123,28,28,0.3)' : '#ffffff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -61,7 +61,7 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
                     fontSize: fontSize,
                     color: selectedOption
                         ? (dark ? 'white' : '#0f172a')
-                        : (dark ? 'rgba(255,255,255,0.3)' : '#94a3b8'),
+                        : (dark ? 'rgba(255,255,255,0.5)' : '#94a3b8'),
                     fontWeight: selectedOption ? 600 : 400,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -85,23 +85,23 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
-                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 8, scale: 1 }}
-                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
                         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                         style={{
                             position: 'absolute',
-                            top: '100%',
+                            bottom: 'calc(100% + 8px)',
                             left: 0,
                             right: 0,
                             zIndex: 1000,
-                            background: dark ? '#1e293b' : '#ffffff',
+                            background: dark ? '#591212' : '#ffffff',
                             borderRadius: '1.25rem',
                             border: '1px solid',
-                            borderColor: dark ? 'rgba(255,255,255,0.1)' : '#e2e8f0',
+                            borderColor: dark ? 'rgba(201,168,76,0.2)' : '#e2e8f0',
                             boxShadow: dark
-                                ? '0 20px 40px -12px rgba(0,0,0,0.5)'
-                                : '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                                ? '0 -10px 40px -10px rgba(0,0,0,0.5)'
+                                : '0 -10px 25px -5px rgba(0, 0, 0, 0.1)',
                             overflow: 'hidden',
                             padding: '0.5rem',
                             backdropFilter: dark ? 'blur(16px)' : 'none'
@@ -128,7 +128,7 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
                                                 : 'transparent',
                                             color: isSelected
                                                 ? (dark ? '#C9A84C' : '#7B1C1C')
-                                                : (dark ? 'rgba(255,255,255,0.6)' : '#475569'),
+                                                : (dark ? 'rgba(255,255,255,0.8)' : '#475569'),
                                             fontSize: fontSize,
                                             fontWeight: isSelected ? 700 : 500,
                                             cursor: 'pointer',

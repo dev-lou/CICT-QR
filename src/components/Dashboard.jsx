@@ -462,15 +462,7 @@ export default function Dashboard({ uuid }) {
                     </a>
                 </motion.div>
 
-                <AnimatePresence>
-                    {(successMsg || error) && (
-                        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ position: 'fixed', bottom: '2rem', left: '2rem', right: '2rem', zIndex: 100 }}>
-                            <div className={`alert alert-${successMsg ? 'success' : 'danger'}`} style={{ boxShadow: '0 10px 30px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                {successMsg || error}
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+
 
                 {/* Personal Credit & Admin Link */}
                 <div style={{ marginTop: '4rem', textAlign: 'center', paddingBottom: '3rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
