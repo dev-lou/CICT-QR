@@ -39,6 +39,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const [queueSize, setQueueSize] = useState(0)
     const [queuedItems, setQueuedItems] = useState([]) // snapshot for UI
     const queueFlushInterval = useRef(null)
+    const recentScansRef = useRef({}) // debounce tracking: { [uuid]: timestamp }
 
     // helpers used by realtime subscriptions to debounce reloads
     const logUpdateTimeoutRef = useRef(null)
@@ -249,16 +250,46 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
     }, [mode])
 
-    // push decoded text into a queue for later processing; immediate beep for feedback
-    const handleScan = useCallback((decodedText) => {
+    // push decoded text into a queue for later processing; immediate beep & toast
+    const handleScan = useCallback(async (decodedText) => {
         const uuid = decodedText.trim()
+        const now = Date.now()
+
+        // 1. Debounce (3 seconds per UUID) to prevent rapid duplicate queuing
+        if (recentScansRef.current[uuid] && now - recentScansRef.current[uuid] < 3000) {
+            return
+        }
+        recentScansRef.current[uuid] = now
+
+        // 2. Play early beep
+        playBeep()
+
+        // 3. Add to queue immediately for background processing
         scanQueueRef.current.push(uuid)
         setQueueSize(scanQueueRef.current.length)
         setQueuedItems([...scanQueueRef.current])
-        // persist queue immediately so nothing is lost on reload
         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
-        playBeep()
-    }, [playBeep])
+
+        // 4. Immediate visual feedback (toast)
+        try {
+            const { data: student } = await supabase.from('students').select('full_name, role').eq('uuid', uuid).single()
+            if (student) {
+                const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 2500,
+                    icon: 'success',
+                    title: `${isStaff ? '⭐' : '🎓'} ${mode === 'time-in' ? 'In' : 'Out'}: ${student.full_name}`,
+                    background: isStaff ? '#4c1d95' : '#047857',
+                    color: '#fff'
+                })
+            }
+        } catch (e) {
+            // Background queue will handle actual DB processing even if toast fails
+        }
+    }, [playBeep, mode])
 
     const startScanner = useCallback(async () => {
         if (html5QrCodeRef.current) return
@@ -278,6 +309,52 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             html5QrCodeRef.current = null; setScanning(false)
         }
     }, [])
+
+    const processScanBatch = async (batch, currentMode) => {
+        const results = []
+        for (const uuid of batch) {
+            const trimmed = uuid.trim()
+            if (!trimmed) continue
+
+            const { data: student } = await supabase.from('students').select('id, full_name, role').eq('uuid', trimmed).single()
+            if (!student) {
+                results.push({ uuid: trimmed, status: 'missing' })
+                continue
+            }
+
+            const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
+            const table = isStaff ? 'staff_logbook' : 'logbook'
+
+            if (currentMode === 'time-in') {
+                const { data: existing } = await supabase.from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
+                if (existing && existing.length > 0) {
+                    results.push({ uuid: trimmed, status: 'duplicate' })
+                    continue
+                }
+                const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
+                if (insertErr) {
+                    results.push({ uuid: trimmed, status: 'error', message: insertErr.message })
+                } else {
+                    results.push({ uuid: trimmed, status: 'ok' })
+                    await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: currentMode, uuid: trimmed } }]).catch(() => { })
+                }
+            } else {
+                const { data: active } = await supabase.from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
+                if (active && active.length > 0) {
+                    const { error: updateErr } = await supabase.from(table).update({ time_out: new Date().toISOString() }).eq('id', active[0].id)
+                    if (updateErr) {
+                        results.push({ uuid: trimmed, status: 'error', message: updateErr.message })
+                    } else {
+                        results.push({ uuid: trimmed, status: 'ok' })
+                        await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN_OUT', details: { uuid: trimmed } }]).catch(() => { })
+                    }
+                } else {
+                    results.push({ uuid: trimmed, status: 'not_checked_in' })
+                }
+            }
+        }
+        return results
+    }
 
     // start a periodic flush of the scan queue
     useEffect(() => {
@@ -303,32 +380,20 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             // persist remaining queue
             localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
 
-            // send batch to middle-tier API rather than doing each insert here
+            // Process directly on client instead of relying on the Vercel edge/serverless function
             try {
-                const { data: { session } } = await supabase.auth.getSession()
-                const token = session?.access_token || ''
-                const resp = await fetch('/api/scan', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ uuids: batch, mode })
-                })
-                const data = await resp.json()
-                if (data.results) {
-                    const errors = data.results.filter(r => r.status !== 'ok')
-                    if (errors.length > 0) {
-                        Swal.fire({
-                            icon: 'warning',
-                            title: 'Partial failure',
-                            html: errors.map(e => `${e.uuid}: ${e.status}${e.message ? ' (' + e.message + ')' : ''}`).join('<br>'),
-                            background: '#1e293b', color: '#fff'
-                        })
-                    }
+                const results = await processScanBatch(batch, mode)
+                const errors = results.filter(r => r.status === 'error')
+                if (errors.length > 0) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Partial failure',
+                        html: errors.map(e => `${e.uuid}: ${e.status}${e.message ? ' (' + e.message + ')' : ''}`).join('<br>'),
+                        background: '#1e293b', color: '#fff'
+                    })
                 }
             } catch (e) {
-                console.error('batch send failed', e)
+                console.error('batch process failed', e)
                 // leave batch items unprocessed so they will be retried next interval
                 scanQueueRef.current.unshift(...batch)
                 setQueueSize(scanQueueRef.current.length)
@@ -340,7 +405,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             clearInterval(queueFlushInterval.current)
             window.removeEventListener('beforeunload', saveOnUnload)
         }
-    }, [handleScanImmediate])
+    }, [mode])
 
     // manual flush action (invoked by button)
     const flushQueue = useCallback(async () => {
@@ -350,16 +415,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         setQueuedItems([...scanQueueRef.current])
         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
         try {
-            const { data: { session } } = await supabase.auth.getSession()
-            const token = session?.access_token || ''
-            await fetch('/api/scan', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ uuids: batch, mode })
-            })
+            await processScanBatch(batch, mode)
         } catch (e) {
             console.error('manual flush failed', e)
             scanQueueRef.current.unshift(...batch)
