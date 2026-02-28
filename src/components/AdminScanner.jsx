@@ -174,7 +174,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     }, [fetchLogbook, fetchStaffLogbook, fetchStats])
 
     // ─── Scanner ─────────────────────────────────────────────────────────────────
-    // original scan handler, kept around for flushing the queue
+    // original scan handler, kept around for reference (not used when middle tier active)
     const handleScanImmediate = useCallback(async (decodedText) => {
         const scannedUuid = decodedText.trim()
         try {
@@ -239,6 +239,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         scanQueueRef.current.push(uuid)
         setQueueSize(scanQueueRef.current.length)
         setQueuedItems([...scanQueueRef.current])
+        // persist queue immediately so nothing is lost on reload
+        localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
         playBeep()
     }, [playBeep])
 
@@ -263,20 +265,83 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     // start a periodic flush of the scan queue
     useEffect(() => {
+        // restore queue from localStorage when component mounts
+        const saved = localStorage.getItem('scanQueue')
+        if (saved) {
+            try { scanQueueRef.current = JSON.parse(saved) || [] } catch { };
+            setQueueSize(scanQueueRef.current.length)
+            setQueuedItems([...scanQueueRef.current])
+        }
+
+        const saveOnUnload = () => {
+            localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+        }
+        window.addEventListener('beforeunload', saveOnUnload)
+
         queueFlushInterval.current = setInterval(async () => {
             if (scanQueueRef.current.length === 0) return
             const batch = scanQueueRef.current.splice(0)
             setQueueSize(scanQueueRef.current.length)
             setQueuedItems([...scanQueueRef.current])
-            // process sequentially for now; could be sent to an edge function
-            for (const txt of batch) {
-                await handleScanImmediate(txt)
+
+            // persist remaining queue
+            localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+
+            // send batch to middle-tier API rather than doing each insert here
+            try {
+                const resp = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uuids: batch, mode })
+                })
+                const data = await resp.json()
+                if (data.results) {
+                    const errors = data.results.filter(r => r.status !== 'ok')
+                    if (errors.length > 0) {
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Partial failure',
+                            html: errors.map(e => `${e.uuid}: ${e.status}${e.message ? ' (' + e.message + ')' : ''}`).join('<br>'),
+                            background: '#1e293b', color: '#fff'
+                        })
+                    }
+                }
+            } catch (e) {
+                console.error('batch send failed', e)
+                // leave batch items unprocessed so they will be retried next interval
+                scanQueueRef.current.unshift(...batch)
+                setQueueSize(scanQueueRef.current.length)
+                setQueuedItems([...scanQueueRef.current])
+                localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
             }
         }, 1000)
         return () => {
             clearInterval(queueFlushInterval.current)
+            window.removeEventListener('beforeunload', saveOnUnload)
         }
     }, [handleScanImmediate])
+
+    // manual flush action (invoked by button)
+    const flushQueue = useCallback(async () => {
+        if (scanQueueRef.current.length === 0) return
+        const batch = scanQueueRef.current.splice(0)
+        setQueueSize(scanQueueRef.current.length)
+        setQueuedItems([...scanQueueRef.current])
+        localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+        try {
+            await fetch('/api/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uuids: batch, mode })
+            })
+        } catch (e) {
+            console.error('manual flush failed', e)
+            scanQueueRef.current.unshift(...batch)
+            setQueueSize(scanQueueRef.current.length)
+            setQueuedItems([...scanQueueRef.current])
+            localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+        }
+    }, [mode])
 
     useEffect(() => () => { if (html5QrCodeRef.current) html5QrCodeRef.current.stop().catch(() => { }) }, [])
 
@@ -491,6 +556,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             `}</style>
 
             {/* ── SCAN RESULT MODAL ───────────────────────────────────────────── */}
+            {/** Place modal at top level, not nested in any other JSX element **/}
             <AnimatePresence>
                 {scanModal && (
                     <motion.div
@@ -562,7 +628,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                     color: 'white',
                                 }}
                             >
-                                OK — Scan Next
                             </motion.button>
                         </motion.div>
                     </motion.div>
@@ -734,34 +799,35 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                             {queueSize > 0 && <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#C9A84C' }}>{queueSize} pending</span>}
                                         </span>
                                     </div>
-                                    <button
-                                        onClick={scanning ? stopScanner : startScanner}
-                                        style={{
-                                            padding: '0.625rem 1.5rem', borderRadius: '0.875rem', fontWeight: 900, fontSize: '0.8125rem', cursor: 'pointer', fontFamily: 'inherit',
-                                            background: scanning ? 'rgba(239, 68, 68, 0.1)' : 'linear-gradient(135deg, #7B1C1C, #C9A84C)',
-                                            color: scanning ? '#ef4444' : 'white',
-                                            textTransform: 'uppercase', letterSpacing: '0.05em',
-                                            border: scanning ? '1px solid rgba(239, 68, 68, 0.2)' : 'none'
-                                        }}
-                                    >{scanning ? 'Stop Scanner' : 'Open Scanner'}</button>
-                                </div>
-                                <div style={{ background: '#000', position: 'relative', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <div id="qr-reader" style={{ width: '100%', maxWidth: '500px' }} />
-                                    {!scanning && (
-                                        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.25rem', background: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)' }}>
-                                            <div style={{ width: '4rem', height: '4rem', borderRadius: '50%', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.2)" strokeWidth={1.5}>
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                                                    <circle cx="12" cy="13" r="3" />
-                                                </svg>
-                                            </div>
-                                            <div style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600, letterSpacing: '0.02em' }}>Waiting for a scan...</div>
-                                        </div>
+                                    {queueSize > 0 && (
+                                        <button onClick={flushQueue} style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.75rem', background: '#C9A84C', color: '#0f172a', marginLeft: '1rem' }}>Flush Now</button>
                                     )}
                                 </div>
+                                <button
+                                    onClick={scanning ? stopScanner : startScanner}
+                                    style={{
+                                        padding: '0.625rem 1.5rem', borderRadius: '0.875rem', fontWeight: 900, fontSize: '0.8125rem', cursor: 'pointer', fontFamily: 'inherit',
+                                        background: scanning ? 'rgba(239, 68, 68, 0.1)' : 'linear-gradient(135deg, #7B1C1C, #C9A84C)',
+                                        color: scanning ? '#ef4444' : 'white',
+                                        textTransform: 'uppercase', letterSpacing: '0.05em',
+                                        border: scanning ? '1px solid rgba(239, 68, 68, 0.2)' : 'none'
+                                    }}
+                                >{scanning ? 'Stop Scanner' : 'Open Scanner'}</button>
                             </div>
-
-                            {/* Mini logbook preview (last 5) */}
+                            <div style={{ background: '#000', position: 'relative', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div id="qr-reader" style={{ width: '100%', maxWidth: '500px' }} />
+                                {!scanning && (
+                                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.25rem', background: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)' }}>
+                                        <div style={{ width: '4rem', height: '4rem', borderRadius: '50%', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.2)" strokeWidth={1.5}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                                <circle cx="12" cy="13" r="3" />
+                                            </svg>
+                                        </div>
+                                        <div style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600, letterSpacing: '0.02em' }}>Waiting for a scan...</div>
+                                    </div>
+                                )}
+                            </div>
                             {logbook.length > 0 && (
                                 <div className="luxury-card" style={{ padding: '1.5rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
@@ -1251,7 +1317,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                     <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.4)' }}>No pending scans</div>
                                 ) : (
                                     <ul style={{ marginTop: '1rem', listStyle: 'none', padding: 0, maxHeight: '300px', overflowY: 'auto' }}>
-                                        {queuedItems.map((u,i)=>(
+                                        {queuedItems.map((u, i) => (
                                             <li key={i} style={{ padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.875rem' }}>{u}</li>
                                         ))}
                                     </ul>
@@ -1263,6 +1329,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     {/* Removed Teams, Scores, and Users Tabs -> relocated to AdminManageData */}
                 </AnimatePresence>
             </div>
-        </div >
+        </div>
     )
 }

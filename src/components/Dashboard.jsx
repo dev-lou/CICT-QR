@@ -347,16 +347,15 @@ export default function Dashboard({ uuid }) {
                 </AnimatePresence>
 
                 {/* Personal Credit & Admin Link */}
-                <div style={{ marginTop: '3rem', textAlign: 'center', paddingBottom: '2rem' }}>
-                    <p style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.15)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', pointerEvents: 'none', marginBottom: '1.5rem' }}>Built by Lou Vincent Baroro</p>
+                <div style={{ marginTop: '4rem', textAlign: 'center', paddingBottom: '3rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
 
                     {(student?.role === 'executive' || student?.role === 'officer') && (
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <a href="/admin" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'none', fontSize: '0.625rem', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.5rem 1.25rem', borderRadius: '99px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.8)'} onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
-                                System Administration
-                            </a>
-                        </div>
+                        <a href="/admin" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'none', fontSize: '0.625rem', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.5rem 1.25rem', borderRadius: '99px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.8)'} onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
+                            System Administration
+                        </a>
                     )}
+
+                    <p style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.15)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', pointerEvents: 'none', margin: 0 }}>Built by Lou Vincent Baroro</p>
                 </div>
             </div>
         </div>
