@@ -71,6 +71,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const [logFilter, setLogFilter] = useState('all') // 'all' | 'in' | 'out'
     const [dayFilter, setDayFilter] = useState('all')
     const [currentPage, setCurrentPage] = useState(1)
+    const [logSearch, setLogSearch] = useState('')
     const [initialLogJump, setInitialLogJump] = useState(true)
     const pageSize = 30
 
@@ -79,6 +80,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const [staffLogLoading, setStaffLogLoading] = useState(false)
     const [staffLogFilter, setStaffLogFilter] = useState('all')
     const [staffDayFilter, setStaffDayFilter] = useState('all')
+    const [staffSearch, setStaffSearch] = useState('')
     const [staffPage, setStaffPage] = useState(1)
     const [initialStaffJump, setInitialStaffJump] = useState(true)
 
@@ -98,8 +100,9 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         try {
             const { data, error } = await supabase
                 .from('logbook')
-                .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
+                .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
                 .order('time_in', { ascending: true })
+
             if (error) throw error
             setLogbook(data || [])
             if (initialLogJump && data && data.length > pageSize) {
@@ -131,8 +134,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         return () => { supabase.removeChannel(channel) }
     }, [fetchLogbook])
 
-    useEffect(() => { setCurrentPage(1) }, [logFilter, dayFilter, activeTab])
-    useEffect(() => { setStaffPage(1) }, [staffLogFilter, staffDayFilter, activeTab])
+    useEffect(() => { setCurrentPage(1) }, [logFilter, dayFilter, activeTab, logSearch])
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (activeTab === 'logbook') fetchLogbook()
+        }, 500)
+        return () => clearTimeout(handler)
+    }, [logSearch, activeTab, fetchLogbook])
 
     // ─── Staff Logbook ───────────────────────────────────────────────────────────
     const fetchStaffLogbook = useCallback(async () => {
@@ -141,8 +149,9 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         try {
             const { data, error } = await supabase
                 .from('staff_logbook')
-                .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
+                .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
                 .order('time_in', { ascending: true })
+
             if (error) throw error
             setStaffLogbook(data || [])
             if (initialStaffJump && data && data.length > pageSize) {
@@ -156,6 +165,14 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             setStaffLogLoading(false)
         }
     }, [])
+
+    useEffect(() => { setStaffPage(1) }, [staffLogFilter, staffDayFilter, activeTab, staffSearch])
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (activeTab === 'staff') fetchStaffLogbook()
+        }, 500)
+        return () => clearTimeout(handler)
+    }, [staffSearch, activeTab, fetchStaffLogbook])
 
     useEffect(() => {
         fetchStaffLogbook()
@@ -535,6 +552,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const eventDays = [...new Set(logbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
 
     const filteredLog = logbook.filter((r) => {
+        if (logSearch.trim() && !r.students?.full_name?.toLowerCase().includes(logSearch.trim().toLowerCase())) return false
         if (dayFilter !== 'all' && dayKey(r.time_in) !== dayFilter) return false
         if (logFilter === 'in') return !r.time_out
         if (logFilter === 'out') return !!r.time_out
@@ -544,6 +562,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     // Staff filter logic (moved from render scope)
     const staffEventDays = [...new Set(staffLogbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
     const filteredStaff = staffLogbook.filter((r) => {
+        if (staffSearch.trim() && !r.students?.full_name?.toLowerCase().includes(staffSearch.trim().toLowerCase())) return false
         if (staffDayFilter !== 'all' && dayKey(r.time_in) !== staffDayFilter) return false
         if (staffLogFilter === 'in') return !r.time_out
         if (staffLogFilter === 'out') return !!r.time_out
@@ -1128,8 +1147,40 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                 }}>{f.label.toUpperCase()}</button>
                                         ))}
                                     </div>
-                                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                        <button onClick={fetchLogbook}
+                                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+                                        {/* Name Search Bar */}
+                                        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '300px' }}>
+                                            <input
+                                                type="text"
+                                                placeholder="Search by student name..."
+                                                value={logSearch}
+                                                onChange={(e) => setLogSearch(e.target.value)}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '0.625rem 1rem 0.625rem 2.5rem',
+                                                    borderRadius: '1rem',
+                                                    border: '1px solid rgba(255,255,255,0.1)',
+                                                    background: 'rgba(0,0,0,0.3)',
+                                                    color: 'white',
+                                                    fontSize: '0.8125rem',
+                                                    outline: 'none',
+                                                    fontFamily: 'inherit',
+                                                    transition: 'all 0.3s ease'
+                                                }}
+                                                onFocus={(e) => {
+                                                    e.target.style.borderColor = '#C9A84C';
+                                                    e.target.style.boxShadow = '0 0 0 2px rgba(201,168,76,0.1)';
+                                                }}
+                                                onBlur={(e) => {
+                                                    e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                                                    e.target.style.boxShadow = 'none';
+                                                }}
+                                            />
+                                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.4)" strokeWidth={2} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)' }}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
+                                        </div>
+                                        <button onClick={fetchLogbook} disabled={logLoading}
                                             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 1rem', borderRadius: '0.875rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                                             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                                             Refresh
@@ -1333,7 +1384,39 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                             </button>
                                         ))}
                                     </div>
-                                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+                                        {/* Name Search Bar */}
+                                        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '300px' }}>
+                                            <input
+                                                type="text"
+                                                placeholder="Search by staff name..."
+                                                value={staffSearch}
+                                                onChange={(e) => setStaffSearch(e.target.value)}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '0.625rem 1rem 0.625rem 2.5rem',
+                                                    borderRadius: '1rem',
+                                                    border: '1px solid rgba(255,255,255,0.1)',
+                                                    background: 'rgba(0,0,0,0.3)',
+                                                    color: 'white',
+                                                    fontSize: '0.8125rem',
+                                                    outline: 'none',
+                                                    fontFamily: 'inherit',
+                                                    transition: 'all 0.3s ease'
+                                                }}
+                                                onFocus={(e) => {
+                                                    e.target.style.borderColor = '#C9A84C';
+                                                    e.target.style.boxShadow = '0 0 0 2px rgba(201,168,76,0.1)';
+                                                }}
+                                                onBlur={(e) => {
+                                                    e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                                                    e.target.style.boxShadow = 'none';
+                                                }}
+                                            />
+                                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.4)" strokeWidth={2} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)' }}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
+                                        </div>
                                         <button onClick={fetchStaffLogbook}
                                             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 1rem', borderRadius: '0.875rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                                             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>

@@ -77,6 +77,19 @@ export default function Dashboard({ uuid }) {
 
     const handleSaveEdit = async () => {
         if (!editName.trim() || !supabase) return
+
+        // Change Guard: check if anything actually changed
+        const hasNameChange = editName.trim() !== student.full_name
+        const hasTeamChange = editTeam !== student.team_name
+        const hasRoleChange = editRole !== student.role
+
+        if (!hasNameChange && !hasTeamChange && !hasRoleChange) {
+            setSuccessMsg('No changes detected.')
+            setTimeout(() => setSuccessMsg(''), 3000)
+            setEditing(false)
+            return
+        }
+
         setSaving(true); setError('')
         try {
             const { error: dbError } = await supabase

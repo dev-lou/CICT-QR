@@ -20,6 +20,7 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
     const [users, setUsers] = useState([])
     const [usersLoading, setUsersLoading] = useState(false)
     const [userSearch, setUserSearch] = useState('')
+    const [userRoleFilter, setUserRoleFilter] = useState('all')
     const [editingUser, setEditingUser] = useState(null)
     const [editForm, setEditForm] = useState({})
     const [showMoreRolesEdit, setShowMoreRolesEdit] = useState(false)
@@ -79,7 +80,7 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
     }, [activeTab, fetchLogs, fetchUsersAndTeams])
 
     useEffect(() => { setCurrentPage(1) }, [search, filter, activeTab])
-    useEffect(() => { setUserPage(1) }, [userSearch, activeTab])
+    useEffect(() => { setUserPage(1) }, [userSearch, userRoleFilter, activeTab])
 
     // ─── Audit Log Helpers
     const createAuditLog = async (action, targetName, details) => {
@@ -119,6 +120,20 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
     const saveEditUser = async (id) => {
         if (!supabase) return
         const oldData = users.find(u => u.id === id)
+
+        // Calculate changes first
+        const changes = {}
+        if (oldData.full_name !== editForm.full_name) changes.full_name = { old: oldData.full_name, new: editForm.full_name }
+        if (oldData.role !== editForm.role) changes.role = { old: oldData.role, new: editForm.role }
+        if (oldData.team_name !== editForm.team_name) changes.team_name = { old: oldData.team_name, new: editForm.team_name }
+
+        // Change Guard
+        if (Object.keys(changes).length === 0) {
+            Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'No changes to save', showConfirmButton: false, timer: 2000 })
+            setEditingUser(null)
+            return
+        }
+
         try {
             const { error } = await supabase.from('students').update({
                 full_name: editForm.full_name,
@@ -127,14 +142,7 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
             }).eq('id', id)
             if (error) throw error
 
-            const changes = {}
-            if (oldData.full_name !== editForm.full_name) changes.full_name = { old: oldData.full_name, new: editForm.full_name }
-            if (oldData.role !== editForm.role) changes.role = { old: oldData.role, new: editForm.role }
-            if (oldData.team_name !== editForm.team_name) changes.team_name = { old: oldData.team_name, new: editForm.team_name }
-
-            if (Object.keys(changes).length > 0) {
-                await createAuditLog('UPDATE_USER', editForm.full_name, changes)
-            }
+            await createAuditLog('UPDATE_USER', editForm.full_name, changes)
 
             setEditingUser(null)
             Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'User updated', showConfirmButton: false, timer: 2000 })
@@ -151,10 +159,13 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
     const logTotalPages = Math.ceil(filteredLogs.length / logPageSize)
     const paginatedLogs = filteredLogs.slice((currentPage - 1) * logPageSize, currentPage * logPageSize)
 
-    const filteredUsers = users.filter(user =>
-        user.full_name?.toLowerCase().includes(userSearch.toLowerCase()) ||
-        user.team_name?.toLowerCase().includes(userSearch.toLowerCase())
-    )
+    const filteredUsers = users.filter(user => {
+        if (userRoleFilter !== 'all' && user.role !== userRoleFilter) return false
+        return (
+            user.full_name?.toLowerCase().includes(userSearch.toLowerCase()) ||
+            user.team_name?.toLowerCase().includes(userSearch.toLowerCase())
+        )
+    })
 
     const userTotalPages = Math.ceil(filteredUsers.length / userPageSize)
     const paginatedUsers = filteredUsers.slice((userPage - 1) * userPageSize, userPage * userPageSize)
@@ -333,6 +344,7 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
                                                                 <th style={{ padding: '1rem 2rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>PRECISION TIMESTAMP</th>
                                                                 <th style={{ padding: '1rem 2rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>CLASSIFICATION</th>
                                                                 <th style={{ padding: '1rem 2rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>SUBJECT TARGET</th>
+                                                                <th style={{ padding: '1rem 2rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>CHANGES</th>
                                                                 <th style={{ padding: '1rem 2rem', textAlign: 'left', fontSize: '0.625rem', fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>EXECUTED BY</th>
                                                             </tr>
                                                         </thead>
@@ -350,11 +362,46 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
                                                                             color: log.action === 'DELETE_USER' ? '#ef4444' : log.action === 'UPDATE_USER' ? '#10b981' : '#3b82f6',
                                                                             border: `1px solid ${log.action === 'DELETE_USER' ? 'rgba(239,68,68,0.2)' : log.action === 'UPDATE_USER' ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)'}`
                                                                         }}>
-                                                                            {log.action?.replace('_', ' ')}
+                                                                            {log.action?.replace(/_/g, ' ')}
                                                                         </span>
                                                                     </td>
                                                                     <td style={{ padding: '1.25rem 2rem', fontWeight: 700, color: 'white', fontSize: '0.875rem' }}>{log.target_name}</td>
-                                                                    <td style={{ padding: '1.25rem 2rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>{log.admin_email || 'SYSTEM AUTOMATION'}</td>
+                                                                    <td style={{ padding: '1.25rem 2rem', maxWidth: '280px' }}>
+                                                                        {/* SELF_EDIT: show before/after from details.before and details.after */}
+                                                                        {log.action === 'SELF_EDIT' && log.details?.before && log.details?.after && (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                                                                                {['full_name', 'team_name', 'role'].filter(k =>
+                                                                                    log.details.before[k] !== log.details.after[k]
+                                                                                ).map(k => (
+                                                                                    <div key={k} style={{ fontSize: '0.75rem' }}>
+                                                                                        <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>{k.replace('_', ' ')}:</span>
+                                                                                        <span style={{ color: '#ef4444', fontWeight: 700 }}>{log.details.before[k] || '—'}</span>
+                                                                                        <span style={{ color: 'rgba(255,255,255,0.3)', margin: '0 4px' }}>→</span>
+                                                                                        <span style={{ color: '#10b981', fontWeight: 700 }}>{log.details.after[k] || '—'}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                        {/* UPDATE_USER: show per-field old/new from changes object */}
+                                                                        {log.action === 'UPDATE_USER' && log.details && (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                                                                                {Object.entries(log.details).map(([k, v]) => (
+                                                                                    <div key={k} style={{ fontSize: '0.75rem' }}>
+                                                                                        <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>{k.replace('_', ' ')}:</span>
+                                                                                        <span style={{ color: '#ef4444', fontWeight: 700 }}>{v?.old || '—'}</span>
+                                                                                        <span style={{ color: 'rgba(255,255,255,0.3)', margin: '0 4px' }}>→</span>
+                                                                                        <span style={{ color: '#10b981', fontWeight: 700 }}>{v?.new || '—'}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                        {(log.action === 'DELETE_USER' || !log.details) && (
+                                                                            <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.75rem' }}>—</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td style={{ padding: '1.25rem 2rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>
+                                                                        {log.action === 'SELF_EDIT' ? <span style={{ color: '#C9A84C', fontWeight: 800 }}>SELF</span> : (log.admin_email || 'SYSTEM')}
+                                                                    </td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
@@ -373,7 +420,7 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
                                                                     background: log.action === 'DELETE_USER' ? 'rgba(239,68,68,0.15)' : log.action === 'UPDATE_USER' ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)',
                                                                     color: log.action === 'DELETE_USER' ? '#ef4444' : log.action === 'UPDATE_USER' ? '#10b981' : '#3b82f6',
                                                                 }}>
-                                                                    {log.action?.replace('_', ' ')}
+                                                                    {log.action?.replace(/_/g, ' ')}
                                                                 </span>
                                                                 <div style={{ textAlign: 'right' }}>
                                                                     <p style={{ fontSize: '0.8125rem', fontWeight: 800, color: 'white', margin: 0 }}>{fmtTime(log.created_at)}</p>
@@ -381,7 +428,34 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
                                                                 </div>
                                                             </div>
                                                             <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'white', marginBottom: '0.5rem' }}>{log.target_name}</p>
-                                                            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>BY: {log.admin_email || 'SYSTEM AUTOMATION'}</p>
+                                                            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600, marginBottom: log.details ? '0.75rem' : 0 }}>
+                                                                BY: {log.action === 'SELF_EDIT' ? <span style={{ color: '#C9A84C', fontWeight: 800 }}>SELF</span> : (log.admin_email || 'SYSTEM')}
+                                                            </p>
+                                                            {/* Changes detail for mobile */}
+                                                            {log.action === 'SELF_EDIT' && log.details?.before && log.details?.after && (
+                                                                <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '0.75rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                                    {['full_name', 'team_name', 'role'].filter(k => log.details.before[k] !== log.details.after[k]).map(k => (
+                                                                        <div key={k} style={{ fontSize: '0.75rem' }}>
+                                                                            <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 4 }}>{k.replace('_', ' ')}:</span>
+                                                                            <span style={{ color: '#ef4444', fontWeight: 700 }}>{log.details.before[k] || '—'}</span>
+                                                                            <span style={{ color: 'rgba(255,255,255,0.3)', margin: '0 4px' }}>→</span>
+                                                                            <span style={{ color: '#10b981', fontWeight: 700 }}>{log.details.after[k] || '—'}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            {log.action === 'UPDATE_USER' && log.details && (
+                                                                <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '0.75rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                                    {Object.entries(log.details).map(([k, v]) => (
+                                                                        <div key={k} style={{ fontSize: '0.75rem' }}>
+                                                                            <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 4 }}>{k.replace('_', ' ')}:</span>
+                                                                            <span style={{ color: '#ef4444', fontWeight: 700 }}>{v?.old || '—'}</span>
+                                                                            <span style={{ color: 'rgba(255,255,255,0.3)', margin: '0 4px' }}>→</span>
+                                                                            <span style={{ color: '#10b981', fontWeight: 700 }}>{v?.new || '—'}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
@@ -420,14 +494,46 @@ export default function AdminAuditLog({ onLogout, onNavigateScanner, onNavigateM
                                 style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
                                 {/* User Controls */}
-                                <div className="luxury-card" style={{ padding: '2rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div>
-                                        <p style={{ fontWeight: 900, color: 'white', fontSize: '1.25rem', marginBottom: '0.25rem', letterSpacing: '-0.01em' }}>PERSONNEL DIRECTORY</p>
-                                        <p style={{ color: '#C9A84C', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{users.length} REGISTERED ENTITIES</p>
+                                <div className="luxury-card" style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div>
+                                            <p style={{ fontWeight: 900, color: 'white', fontSize: '1.125rem', marginBottom: '0.2rem', letterSpacing: '-0.01em' }}>PERSONNEL DIRECTORY</p>
+                                            <p style={{ color: '#C9A84C', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                {filteredUsers.length} / {users.length} ENTITIES
+                                            </p>
+                                        </div>
+                                        <div style={{ position: 'relative', flex: '1 1 250px', maxWidth: '440px' }}>
+                                            <svg style={{ position: 'absolute', left: '1.25rem', top: '50%', transform: 'translateY(-50%)' }} width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.3)" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                            <input type="text" placeholder="Search by name or team…" value={userSearch} onChange={e => setUserSearch(e.target.value)} className="luxury-input" style={{ paddingLeft: '3.25rem' }} />
+                                        </div>
                                     </div>
-                                    <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: '500px' }}>
-                                        <svg style={{ position: 'absolute', left: '1.25rem', top: '50%', transform: 'translateY(-50%)' }} width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.3)" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                                        <input type="text" placeholder="Search by name, team, or designation…" value={userSearch} onChange={e => setUserSearch(e.target.value)} className="luxury-input" style={{ paddingLeft: '3.25rem' }} />
+                                    {/* Role Filter Chips */}
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        {[
+                                            { id: 'all', label: 'All Roles', color: '#C9A84C' },
+                                            { id: 'student', label: 'Student', color: 'rgba(255,255,255,0.6)' },
+                                            { id: 'leader', label: 'Leader', color: '#f59e0b' },
+                                            { id: 'facilitator', label: 'Facilitator', color: '#3b82f6' },
+                                            { id: 'executive', label: 'Executive', color: '#10b981' },
+                                            { id: 'officer', label: 'Officer', color: '#8b5cf6' },
+                                        ].map(r => (
+                                            <button key={r.id} onClick={() => setUserRoleFilter(r.id)}
+                                                style={{
+                                                    padding: '0.4rem 0.875rem', borderRadius: '99px', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer',
+                                                    background: userRoleFilter === r.id ? `${r.color}18` : 'rgba(255,255,255,0.03)',
+                                                    color: userRoleFilter === r.id ? r.color : 'rgba(255,255,255,0.35)',
+                                                    border: `1.5px solid ${userRoleFilter === r.id ? `${r.color}45` : 'rgba(255,255,255,0.06)'}`,
+                                                    transition: 'all 0.2s', textTransform: 'uppercase', letterSpacing: '0.04em'
+                                                }}
+                                            >
+                                                {r.label}
+                                                {r.id !== 'all' && (
+                                                    <span style={{ marginLeft: '0.35rem', opacity: 0.6, fontWeight: 700 }}>
+                                                        ({users.filter(u => u.role === r.id).length})
+                                                    </span>
+                                                )}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
 

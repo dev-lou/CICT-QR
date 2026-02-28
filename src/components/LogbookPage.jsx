@@ -133,33 +133,36 @@ export default function LogbookPage({ uuid }) {
             {/* Premium Header */}
             <div style={{ background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', position: 'sticky', top: 0, zIndex: 100 }}>
                 <div className="holographic-gold" style={{ height: '3px', width: '100%' }} />
-                <div style={{ maxWidth: '64rem', margin: '0 auto', padding: '0.875rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ maxWidth: '64rem', margin: '0 auto', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => navigate('/')}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '2rem', height: '2rem', borderRadius: '0.625rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', color: '#C9A84C' }}>
-                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '2.25rem', height: '2.25rem', borderRadius: '0.625rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', color: '#C9A84C' }}>
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                         </svg>
                     </motion.button>
 
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        <h1 style={{ fontWeight: 900, fontSize: '1rem', color: 'white', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-                            <span style={{ color: '#C9A84C' }}>PROTOCOL:</span> {myRole === 'leader' || myRole === 'facilitator' || myRole === 'executive' || myRole === 'officer' ? 'STAFF LOGBOOK' : 'ATTENDANCE LOG'}
+                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        <h1 style={{ fontWeight: 900, fontSize: '0.9375rem', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem', margin: 0, overflow: 'hidden' }}>
+                            <span style={{ color: '#C9A84C', flexShrink: 0, fontSize: '0.75rem' }}>PROTOCOL:</span>
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {myRole === 'leader' || myRole === 'facilitator' || myRole === 'executive' || myRole === 'officer' ? 'STAFF LOGBOOK' : 'ATTENDANCE LOG'}
+                            </span>
                         </h1>
                         {myStudent && (
-                            <p style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700, margin: '0.125rem 0 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                ENTITY: <span style={{ color: 'white' }}>{myStudent.full_name}</span>
-                                <span style={{ margin: '0 0.5rem', opacity: 0.3 }}>|</span>
-                                RANK: <span style={{ color: '#C9A84C' }}>{myRole}</span>
+                            <p style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700, margin: '0.1rem 0 0', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <span style={{ color: 'rgba(255,255,255,0.7)' }}>{myStudent.full_name}</span>
+                                <span style={{ margin: '0 0.3rem', opacity: 0.3 }}>·</span>
+                                <span style={{ color: '#C9A84C' }}>{myRole.toUpperCase()}</span>
                             </p>
                         )}
                     </div>
 
                     <motion.button whileHover={{ scale: 1.1, background: 'rgba(201,168,76,0.15)' }} whileTap={{ scale: 0.9 }}
                         onClick={fetchData} className="luxury-hover"
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '2.5rem', height: '2.5rem', borderRadius: '0.75rem', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: '#C9A84C', cursor: 'pointer' }}
+                        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '2.25rem', height: '2.25rem', borderRadius: '0.75rem', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: '#C9A84C', cursor: 'pointer' }}
                         title="Refresh Archives"
                     >
-                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </motion.button>
