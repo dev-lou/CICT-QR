@@ -33,12 +33,18 @@ function GlobalStudentListener({ uuid }) {
 
                     Swal.fire({
                         icon: 'success',
-                        title: `Administrator Successfully Scanned Your QR!`,
-                        text: `You have been ${action} to the Logbook.`,
-                        confirmButtonText: 'Great!',
-                        background: isStaff ? '#4c1d95' : '#047857',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">ADMINISTRATOR SCANNED YOU!</span>`,
+                        html: `<div style="color: rgba(255,255,255,0.7); font-size: 0.9375rem; font-weight: 600; margin-top: 0.5rem;">You have been <b style="color: ${isStaff ? '#C9A84C' : '#10b981'}; text-transform: uppercase;">${action}</b>. Check the logbook below.</div>`,
+                        confirmButtonText: 'AWESOME',
+                        confirmButtonColor: '#C9A84C',
+                        background: '#1e293b', // Match luxury card background
                         color: '#ffffff',
-                        backdrop: `rgba(0,0,0,0.6)`
+                        backdrop: `rgba(15,23,42,0.85)`, // Darker, blurry backdrop
+                        padding: '2rem',
+                        customClass: {
+                            popup: 'luxury-swal-popup',
+                            confirmButton: 'luxury-swal-btn'
+                        }
                     })
                 })
                 .subscribe()

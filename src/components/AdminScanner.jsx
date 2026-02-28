@@ -292,14 +292,20 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 // Blocking Admin Modal
                 await Swal.fire({
                     icon: 'success',
-                    title: `${isStaff ? '⭐' : '🎓'} ${mode === 'time-in' ? 'Checked In' : 'Checked Out'}`,
-                    text: student.full_name,
-                    confirmButtonText: 'OK',
+                    title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">${isStaff ? '⭐' : '🎓'} ${mode === 'time-in' ? 'CHECKED IN' : 'CHECKED OUT'}</span>`,
+                    html: `<div style="color: #C9A84C; font-size: 1.125rem; font-weight: 900; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name}</div>`,
+                    confirmButtonText: 'SCAN NEXT',
                     confirmButtonColor: '#10b981',
                     background: '#1e293b',
-                    color: '#fff',
+                    color: '#ffffff',
+                    backdrop: `rgba(15,23,42,0.85)`,
+                    padding: '2rem',
                     allowOutsideClick: false, // Force them to click OK
-                    allowEscapeKey: false
+                    allowEscapeKey: false,
+                    customClass: {
+                        popup: 'luxury-swal-popup',
+                        confirmButton: 'luxury-swal-btn'
+                    }
                 })
             }
         } catch (e) {
@@ -430,7 +436,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 setQueuedItems([...scanQueueRef.current])
                 localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
             }
-        }, 3000)
+        }, 5000) // Changed from 3000 to 5000ms to allow admins to see the queue build up momentarily if desired
         return () => {
             clearInterval(queueFlushInterval.current)
             window.removeEventListener('beforeunload', saveOnUnload)
@@ -440,7 +446,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     // manual flush action (invoked by button)
     const flushQueue = useCallback(async () => {
         if (scanQueueRef.current.length === 0) {
-            Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Queue is already empty.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
+            Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Queue is already synced.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
             return
         }
         const batch = scanQueueRef.current.splice(0)
@@ -449,14 +455,14 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
         try {
             await processScanBatch(batch, mode)
-            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Queue flushed successfully.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Synced to database.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
         } catch (e) {
-            console.error('manual flush failed', e)
+            console.error('manual sync failed', e)
             scanQueueRef.current.unshift(...batch)
             setQueueSize(scanQueueRef.current.length)
             setQueuedItems([...scanQueueRef.current])
             localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
-            Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Flush failed. Are you offline?', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
+            Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Sync failed. Are you offline?', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
         }
     }, [mode])
 
@@ -1465,10 +1471,10 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
                                         <div style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'white' }}>Pending Scans ({queueSize})</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Because the scanner uses a blocking pop-up, scans usually upload instantly. Items only queue here if you lose internet.</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Scans are held here for 5 seconds before uploading to the database.</div>
                                     </div>
                                     <button onClick={flushQueue} style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: 'rgba(201,168,76,0.1)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.3)', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                        FORCE FLUSH
+                                        SYNC NOW
                                     </button>
                                 </div>
                                 {queuedItems.length === 0 ? (
