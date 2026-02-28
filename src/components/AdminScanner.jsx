@@ -10,8 +10,24 @@ import autoTable from 'jspdf-autotable'
 
 export default function AdminScanner({ onLogout, onNavigateManageData, onNavigateAudit, onNavigateTally, onNavigateHistory }) {
     const navigate = useNavigate()
-    const [activeTab, setActiveTab] = useState('scanner')
+    const [activeTab, setActiveTab] = useState('scanner') // 'scanner', 'logbook', 'staff', 'pending'
     const [menuOpen, setMenuOpen] = useState(false)
+    const [statsModal, setStatsModal] = useState(false)
+    const [isOnline, setIsOnline] = useState(navigator.onLine)
+
+    // Window online/offline tracking
+    useEffect(() => {
+        const setOnline = () => setIsOnline(true)
+        const setOffline = () => setIsOnline(false)
+        window.addEventListener('online', setOnline)
+        window.addEventListener('offline', setOffline)
+        return () => {
+            window.removeEventListener('online', setOnline)
+            window.removeEventListener('offline', setOffline)
+        }
+    }, [])
+
+    // State for main logbook
     const [mode, setMode] = useState('time-in')
     const [scanning, setScanning] = useState(false)
     const [scanCount, setScanCount] = useState(0)
@@ -279,7 +295,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         window.addEventListener('beforeunload', saveOnUnload)
 
         queueFlushInterval.current = setInterval(async () => {
-            if (scanQueueRef.current.length === 0) return
+            if (scanQueueRef.current.length === 0 || !navigator.onLine) return
             const batch = scanQueueRef.current.splice(0)
             setQueueSize(scanQueueRef.current.length)
             setQueuedItems([...scanQueueRef.current])
@@ -289,9 +305,14 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
             // send batch to middle-tier API rather than doing each insert here
             try {
+                const { data: { session } } = await supabase.auth.getSession()
+                const token = session?.access_token || ''
                 const resp = await fetch('/api/scan', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
                     body: JSON.stringify({ uuids: batch, mode })
                 })
                 const data = await resp.json()
@@ -329,9 +350,14 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         setQueuedItems([...scanQueueRef.current])
         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
         try {
+            const { data: { session } } = await supabase.auth.getSession()
+            const token = session?.access_token || ''
             await fetch('/api/scan', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ uuids: batch, mode })
             })
         } catch (e) {
@@ -753,6 +779,34 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     {activeTab === 'scanner' && (
                         <motion.div key="scanner" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                             style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+                            {/* OFFLINE MODE BANNER */}
+                            <AnimatePresence>
+                                {!isOnline && (
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0, y: -10 }}
+                                        animate={{ opacity: 1, height: 'auto', y: 0 }}
+                                        exit={{ opacity: 0, height: 0, y: -10 }}
+                                        style={{ overflow: 'hidden' }}
+                                    >
+                                        <div style={{
+                                            background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.2))',
+                                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                                            borderRadius: '1rem', padding: '1rem 1.25rem',
+                                            display: 'flex', alignItems: 'center', gap: '1rem',
+                                            boxShadow: '0 4px 20px rgba(239, 68, 68, 0.15)'
+                                        }}>
+                                            <div style={{ width: '2.5rem', height: '2.5rem', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#ef4444" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 011.053 11.2m-1.053-11.2L5.636 18.364m12.728-12.728a9 9 0 00-12.728 0m0 0a9 9 0 00-1.053 11.2M5.636 5.636l12.728 12.728M5.636 18.364a9 9 0 0012.728 0" /></svg>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.875rem', fontWeight: 800, color: '#ef4444', letterSpacing: '0.05em' }}>OFFLINE MODE ACTIVE</div>
+                                                <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginTop: '0.125rem' }}>Network disconnected. All incoming QR scans will be securely queued on your device and auto-synced once connection is restored.</div>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
 
                             {/* Mode toggle */}
                             <div className="luxury-card" style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>

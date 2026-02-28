@@ -16,6 +16,23 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  const authHeader = req.headers.authorization
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid authorization token' })
+  }
+  const token = authHeader.split(' ')[1]
+
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token)
+  if (authErr || !user) {
+    return res.status(401).json({ error: 'Unauthorized user token' })
+  }
+
+  // Double check admin role in users table (assuming valid admins exist there)
+  const { data: adminUser } = await supabase.from('users').select('role').eq('id', user.id).single()
+  if (!adminUser || adminUser.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: Admin access required' })
+  }
+
   const { uuids, mode = 'time-in' } = req.body || {}
   if (!Array.isArray(uuids)) {
     return res.status(400).json({ error: 'Invalid payload, expected uuids array' })

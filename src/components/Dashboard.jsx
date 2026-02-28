@@ -18,6 +18,7 @@ export default function Dashboard({ uuid }) {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [successMsg, setSuccessMsg] = useState('')
+    const [scanNotification, setScanNotification] = useState(null) // { type: 'in' | 'out' }
 
     const fetchStudent = async () => {
         try {
@@ -40,7 +41,33 @@ export default function Dashboard({ uuid }) {
         setTeams(data || [])
     }
 
-    useEffect(() => { fetchStudent(); fetchTeams() }, [uuid])
+    useEffect(() => {
+        fetchStudent()
+        fetchTeams()
+    }, [uuid])
+
+    // Realtime listener for logbook/staff_logbook
+    useEffect(() => {
+        if (!supabase || !student?.id) return
+
+        const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
+        const table = isStaff ? 'staff_logbook' : 'logbook'
+
+        const channel = supabase.channel(`dashboard-scan-${student.id}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: `student_id=eq.${student.id}` }, (payload) => {
+                setScanNotification({ type: 'in' })
+                setTimeout(() => setScanNotification(null), 4000)
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter: `student_id=eq.${student.id}` }, (payload) => {
+                if (payload.new.time_out && !payload.old.time_out) {
+                    setScanNotification({ type: 'out' })
+                    setTimeout(() => setScanNotification(null), 4000)
+                }
+            })
+            .subscribe()
+
+        return () => { supabase.removeChannel(channel) }
+    }, [student?.id, student?.role])
 
     const handleSaveEdit = async () => {
         if (!editName.trim() || !supabase) return
@@ -105,6 +132,49 @@ export default function Dashboard({ uuid }) {
             {/* Ambient Background Glows */}
             <div style={{ position: 'absolute', top: '-10rem', right: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: '-10rem', left: '-10rem', width: '30rem', height: '30rem', borderRadius: '50%', background: 'radial-gradient(circle, rgba(123,28,28,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+            {/* FULLSCREEN REALTIME SCAN OVERLAY */}
+            <AnimatePresence>
+                {scanNotification && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 1.1 }}
+                        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                        style={{
+                            position: 'fixed', inset: 0, zIndex: 9999,
+                            background: scanNotification.type === 'in'
+                                ? 'linear-gradient(135deg, rgba(22,163,74,0.95), rgba(0,0,0,0.98))'
+                                : 'linear-gradient(135deg, rgba(59,130,246,0.95), rgba(0,0,0,0.98))',
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            backdropFilter: 'blur(20px)'
+                        }}
+                    >
+                        <motion.div
+                            initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2, type: 'spring' }}
+                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', textAlign: 'center' }}
+                        >
+                            <div style={{
+                                width: '6rem', height: '6rem', borderRadius: '50%', background: 'rgba(255,255,255,0.1)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem',
+                                border: '2px solid rgba(255,255,255,0.5)', boxShadow: '0 0 40px rgba(255,255,255,0.2)'
+                            }}>
+                                {scanNotification.type === 'in' ? (
+                                    <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                ) : (
+                                    <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                                )}
+                            </div>
+                            <h1 style={{ fontSize: '3rem', fontWeight: 900, color: 'white', margin: 0, letterSpacing: '-0.02em', lineHeight: 1 }}>
+                                {scanNotification.type === 'in' ? 'CHECKED IN!' : 'CHECKED OUT!'}
+                            </h1>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 600, color: 'rgba(255,255,255,0.8)', margin: 0 }}>
+                                {student?.full_name}
+                            </p>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <div style={{ maxWidth: '26rem', margin: '0 auto', position: 'relative', zIndex: 10 }}>
 
