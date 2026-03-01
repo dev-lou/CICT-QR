@@ -69,6 +69,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const staffUpdateTimeoutRef = useRef(null)
 
     const [scanModal, setScanModal] = useState(null) // { type, name, message }
+    const backendStatusRef = useRef({ checkedAt: 0, reachable: navigator.onLine })
 
     // Subscribe to broadcast channel once on mount so .send() actually works
     useEffect(() => {
@@ -80,6 +81,41 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         return () => {
             supabase.removeChannel(ch)
             broadcastChannelRef.current = null
+        }
+    }, [])
+
+    const hasBackendConnection = useCallback(async () => {
+        const now = Date.now()
+        if (now - backendStatusRef.current.checkedAt < 2500) {
+            return backendStatusRef.current.reachable
+        }
+
+        if (!navigator.onLine) {
+            backendStatusRef.current = { checkedAt: now, reachable: false }
+            setIsOnline(false)
+            return false
+        }
+
+        try {
+            const probe = supabase
+                .from('students')
+                .select('id', { head: true, count: 'exact' })
+                .limit(1)
+
+            const result = await Promise.race([
+                probe,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('probe timeout')), 3000))
+            ])
+
+            if (result?.error) throw result.error
+
+            backendStatusRef.current = { checkedAt: now, reachable: true }
+            setIsOnline(true)
+            return true
+        } catch {
+            backendStatusRef.current = { checkedAt: now, reachable: false }
+            setIsOnline(false)
+            return false
         }
     }, [])
 
@@ -381,27 +417,37 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         playBeep()
 
-        // If device is fully offline, capture UUID immediately for later sync.
-        if (!isOnline) {
-            scanQueueRef.current.push({
-                uuid,
-                name: 'Pending verification',
-                mode,
-                queued_at: new Date().toISOString()
+        // Resolve true backend connectivity (do not trust UI online/offline events alone)
+        const backendConnected = await hasBackendConnection()
+
+        // If backend is unreachable, queue once (dedupe by uuid+mode) and show offline modal.
+        if (!backendConnected) {
+            const alreadyQueued = scanQueueRef.current.some((entry) => {
+                const queuedUuid = typeof entry === 'string' ? entry.trim() : (entry?.uuid || '').trim()
+                const queuedMode = typeof entry === 'string' ? mode : (entry?.mode || mode)
+                return queuedUuid === uuid && queuedMode === mode
             })
-            setQueueSize(scanQueueRef.current.length)
-            setQueuedItems([...scanQueueRef.current])
-            localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+
+            if (!alreadyQueued) {
+                scanQueueRef.current.push({
+                    uuid,
+                    name: 'Pending verification',
+                    mode,
+                    queued_at: new Date().toISOString()
+                })
+                setQueueSize(scanQueueRef.current.length)
+                setQueuedItems([...scanQueueRef.current])
+                localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+            }
 
             await Swal.fire({
-                icon: 'info',
-                title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Offline scan captured</span>`,
+                icon: alreadyQueued ? 'warning' : 'info',
+                title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${alreadyQueued ? 'User already registered in this queue.' : 'Offline scan captured'}</span>`,
                 html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
-                    <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">QR source:</span> <span style="font-weight: 700; color: #ffffff;">Printed or screenshot works</span></div>
-                    <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #f59e0b;">Saved to offline queue</span></div>
+                    <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #f59e0b;">${alreadyQueued ? 'Already in offline queue' : 'Saved to offline queue'}</span></div>
                     <div>Connect to internet later and press <b>Sync Now</b>.</div>
                 </div>`,
-                confirmButtonText: 'SCAN NEXT',
+                confirmButtonText: 'Scan Next',
                 confirmButtonColor: '#f59e0b',
                 background: '#1e293b',
                 color: '#ffffff',
@@ -446,32 +492,72 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 const roleLabel = _esc(student.role ? `${student.role.charAt(0).toUpperCase()}${student.role.slice(1)}` : (isStaff ? 'Staff' : 'Student'))
                 const safeName = _esc(student.full_name)
 
-                // 🚀 INSTANT DATABASE INSERT (with 10s timeout safety)
-                let dbStatus = 'error'
-                if (isOnline) {
-                    try {
-                        const results = await Promise.race([
-                            processScanBatch([{ uuid, name: student.full_name, mode }], mode),
-                            new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 10000))
-                        ])
-                        if (results.length > 0) dbStatus = results[0].status
-                    } catch (batchErr) {
-                        console.error('processScanBatch failed or timed out:', batchErr)
-                        dbStatus = 'error'
+                // 🚀 DIRECT DATABASE INSERT (inline — no redundant student lookup)
+                const table = isStaff ? 'staff_logbook' : 'logbook'
+                let dbStatus = 'ok'
+                try {
+                    if (mode === 'time-in') {
+                        const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
+                        const { data: existing } = await supabase
+                            .from(table).select('id, time_in')
+                            .eq('student_id', student.id)
+                            .is('time_out', null)
+
+                        if (existing && existing.length > 0) {
+                            const todayActive = existing.filter(e => e.time_in >= todayStartUTC && e.time_in <= todayEndUTC)
+                            const staleActive = existing.filter(e => e.time_in < todayStartUTC)
+
+                            if (staleActive.length > 0) {
+                                await supabase.from(table)
+                                    .update({ time_out: staleActive[0].time_in })
+                                    .in('id', staleActive.map(e => e.id))
+                            }
+
+                            if (todayActive.length > 0) dbStatus = 'duplicate'
+                        }
+
+                        if (dbStatus === 'ok') {
+                            const { data: todayRecords } = await supabase.from(table)
+                                .select('id').eq('student_id', student.id)
+                                .gte('time_in', todayStartUTC).lte('time_in', todayEndUTC).limit(1)
+
+                            if (todayRecords && todayRecords.length > 0) dbStatus = 'already_scanned_today'
+                        }
+
+                        if (dbStatus === 'ok') {
+                            const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
+                            if (insertErr) throw insertErr
+                            supabase.from('audit_logs').insert([{ student_id: student.id, action: 'SCAN', details: { mode: 'time-in', uuid } }]).catch(() => {})
+                        }
+                    } else {
+                        const { data: active } = await supabase.from(table)
+                            .select('id').eq('student_id', student.id).is('time_out', null).limit(1)
+
+                        if (active && active.length > 0) {
+                            const { error: updateErr } = await supabase.from(table)
+                                .update({ time_out: new Date().toISOString() }).eq('id', active[0].id)
+                            if (updateErr) throw updateErr
+                            supabase.from('audit_logs').insert([{ student_id: student.id, action: 'SCAN_OUT', details: { uuid } }]).catch(() => {})
+                        } else {
+                            dbStatus = 'not_checked_in'
+                        }
                     }
+                } catch (dbErr) {
+                    console.error('DB insert failed:', dbErr)
+                    dbStatus = 'error'
                 }
 
                 if (dbStatus === 'duplicate' || dbStatus === 'already_scanned_today') {
                     await Swal.fire({
                         icon: 'warning',
-                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Attendance already recorded</span>`,
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">User already registered in this queue.</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
                             <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
-                            <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">Already checked in today.</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">Duplicate save was blocked before database insert.</span></div>
                         </div>`,
-                        confirmButtonText: 'SCAN NEXT',
+                        confirmButtonText: 'Scan Next',
                         confirmButtonColor: '#f59e0b',
                         background: '#1e293b',
                         color: '#ffffff',
@@ -501,46 +587,55 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         allowEscapeKey: false,
                         customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
                     })
-                } else {
-                    if (dbStatus === 'error' || !isOnline) {
-                        // OFFLINE QUEUE: Only queue if the internet or database fails
-                        scanQueueRef.current.push({ uuid, name: student.full_name, mode, queued_at: new Date().toISOString() })
-                        setQueueSize(scanQueueRef.current.length)
-                        setQueuedItems([...scanQueueRef.current])
-                        localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
-                    } else {
-                        // SUCCESS! Broadcast to student device (fire-and-forget, NEVER await — send() can hang on flaky connections)
-                        if (broadcastChannelRef.current) {
-                            broadcastChannelRef.current.send({
-                                type: 'broadcast',
-                                event: 'scan-detected',
-                                payload: { uuid, type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
-                            }).catch(e => console.error('Broadcast failed', e))
-                        }
-                    }
-
-                    // Blocking Admin Modal — ALWAYS shows regardless of broadcast result
+                } else if (dbStatus === 'error') {
+                    // DB failed while online — show error, do NOT queue to offline
                     await Swal.fire({
-                        icon: dbStatus === 'error' ? 'info' : 'success',
-                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${dbStatus === 'error' ? 'Saved to offline queue' : (mode === 'time-in' ? 'Check-in recorded' : 'Check-out recorded')}</span>`,
+                        icon: 'error',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Save failed — try again</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
-                            <div style="font-size: 1rem; font-weight: 800; color: ${dbStatus === 'error' ? '#f59e0b' : '#C9A84C'}; margin-bottom: 0.25rem;">${safeName}</div>
+                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
-                            <div><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: ${dbStatus === 'error' ? '#f59e0b' : '#10b981'};">${dbStatus === 'error' ? 'Pending sync (offline)' : 'Synced to database'}</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #ef4444;">Database error — scan this QR again.</span></div>
                         </div>`,
                         confirmButtonText: 'SCAN NEXT',
-                        confirmButtonColor: dbStatus === 'error' ? '#f59e0b' : '#10b981',
+                        confirmButtonColor: '#ef4444',
                         background: '#1e293b',
                         color: '#ffffff',
                         backdrop: `rgba(15,23,42,0.85)`,
                         padding: '2rem',
                         allowOutsideClick: false,
                         allowEscapeKey: false,
-                        customClass: {
-                            popup: 'luxury-swal-popup',
-                            confirmButton: 'luxury-swal-btn'
-                        }
+                        customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                    })
+                } else {
+                    // SUCCESS — broadcast to student device (fire-and-forget)
+                    if (broadcastChannelRef.current) {
+                        broadcastChannelRef.current.send({
+                            type: 'broadcast',
+                            event: 'scan-detected',
+                            payload: { uuid, type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
+                        }).catch(e => console.error('Broadcast failed', e))
+                    }
+
+                    await Swal.fire({
+                        icon: 'success',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">User Successfully Scanned!</span>`,
+                        html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #10b981;">Synced to database ✓</span></div>
+                        </div>`,
+                        confirmButtonText: 'Scan Next',
+                        confirmButtonColor: '#10b981',
+                        background: '#1e293b',
+                        color: '#ffffff',
+                        backdrop: `rgba(15,23,42,0.85)`,
+                        padding: '2rem',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
                     })
                 }
             }
@@ -616,7 +711,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         // Allow next scan only after OK is clicked
         processingRef.current = false
-    }, [playBeep, mode, isOnline, eventMode, getManilaDayBoundsUTC])
+    }, [playBeep, mode, eventMode, getManilaDayBoundsUTC, hasBackendConnection])
 
     // SAFETY NET: If handleScan somehow fails to show Swal and processingRef stays locked,
     // auto‑unlock after 15s so scanning isn't permanently blocked
@@ -1832,7 +1927,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                                                                         <span style={{ color: roleColor, fontSize: '0.625rem', fontWeight: 900, textTransform: 'uppercase' }}>{row.students?.role}</span>
                                                                         <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.625rem', fontWeight: 800 }}>•</span>
-                                                                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.625rem', fontWeight: 800 }}>{row.students?.team_name.toUpperCase()}</span>
+                                                                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.625rem', fontWeight: 800 }}>{(row.students?.team_name || '').toUpperCase()}</span>
                                                                     </div>
                                                                 </div>
                                                                 <div style={{
