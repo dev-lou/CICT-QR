@@ -186,16 +186,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     useEffect(() => {
         fetchLogbook()
-        if (!supabase) return
-        const channel = supabase
-            .channel('logbook-changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'logbook' }, () => {
-                // debounce rapid bursts of events
-                if (logUpdateTimeoutRef.current) clearTimeout(logUpdateTimeoutRef.current)
-                logUpdateTimeoutRef.current = setTimeout(fetchLogbook, 500)
-            })
-            .subscribe()
-        return () => { supabase.removeChannel(channel) }
     }, [fetchLogbook])
 
     useEffect(() => { setCurrentPage(1) }, [logFilter, dayFilter, activeTab, logSearch])
@@ -240,15 +230,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     useEffect(() => {
         fetchStaffLogbook()
-        if (!supabase) return
-        const channel = supabase
-            .channel('staff-logbook-changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_logbook' }, () => {
-                if (staffUpdateTimeoutRef.current) clearTimeout(staffUpdateTimeoutRef.current)
-                staffUpdateTimeoutRef.current = setTimeout(fetchStaffLogbook, 500)
-            })
-            .subscribe()
-        return () => { supabase.removeChannel(channel) }
     }, [fetchStaffLogbook])
 
     const fetchStats = useCallback(async () => {
@@ -262,12 +243,16 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     }, [])
 
     useEffect(() => {
-        fetchLogbook()
-        fetchStaffLogbook()
         fetchStats()
         if (!supabase || eventMode) return
-        const c1 = supabase.channel('logbook-update').on('postgres_changes', { event: '*', schema: 'public', table: 'logbook' }, () => fetchLogbook()).subscribe()
-        const c2 = supabase.channel('staff-update').on('postgres_changes', { event: '*', schema: 'public', table: 'staff_logbook' }, () => fetchStaffLogbook()).subscribe()
+        const c1 = supabase.channel('logbook-update').on('postgres_changes', { event: '*', schema: 'public', table: 'logbook' }, () => {
+            if (logUpdateTimeoutRef.current) clearTimeout(logUpdateTimeoutRef.current)
+            logUpdateTimeoutRef.current = setTimeout(fetchLogbook, 800)
+        }).subscribe()
+        const c2 = supabase.channel('staff-update').on('postgres_changes', { event: '*', schema: 'public', table: 'staff_logbook' }, () => {
+            if (staffUpdateTimeoutRef.current) clearTimeout(staffUpdateTimeoutRef.current)
+            staffUpdateTimeoutRef.current = setTimeout(fetchStaffLogbook, 800)
+        }).subscribe()
         return () => { supabase.removeChannel(c1); supabase.removeChannel(c2); }
     }, [fetchLogbook, fetchStaffLogbook, fetchStats, eventMode])
 
@@ -640,11 +625,28 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             if (modeForItem === 'time-in') {
                 const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
 
-                // 1. Check for Active Session (already checked in but not out)
-                const { data: existing } = await supabase.from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
+                // 1. Check for ANY active session (time_out is null)
+                const { data: existing } = await supabase.from(table).select('id, time_in').eq('student_id', student.id).is('time_out', null)
                 if (existing && existing.length > 0) {
-                    results.push({ item, uuid: trimmed, status: 'duplicate' })
-                    continue
+                    // Separate today's active sessions from stale ones (previous days)
+                    const todayActive = existing.filter(e => e.time_in >= todayStartUTC && e.time_in <= todayEndUTC)
+                    const staleActive = existing.filter(e => e.time_in < todayStartUTC)
+
+                    // Auto-close stale sessions from previous days so they don't block today
+                    if (staleActive.length > 0) {
+                        const staleIds = staleActive.map(e => e.id)
+                        await supabase.from(table)
+                            .update({ time_out: staleActive[0].time_in })
+                            .in('id', staleIds)
+                            .then(() => {})
+                            .catch(() => {})
+                    }
+
+                    // Only block if there's a REAL active session from TODAY
+                    if (todayActive.length > 0) {
+                        results.push({ item, uuid: trimmed, status: 'duplicate' })
+                        continue
+                    }
                 }
 
                 // 2. Check for Same-Day Scanning (checked in at all today, even if checked out)
