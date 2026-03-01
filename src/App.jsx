@@ -50,21 +50,22 @@ function GlobalStudentListener({ uuid }) {
                 if (!context) return
 
                 const now = context.currentTime + 0.005
-                const notes = scanType === 'out' ? [780, 980] : [980, 1240]
+                const notes = scanType === 'out' ? [1080, 900] : [1220, 1450]
 
                 notes.forEach((frequency, index) => {
                     const oscillator = context.createOscillator()
                     const gainNode = context.createGain()
                     oscillator.connect(gainNode)
                     gainNode.connect(context.destination)
-                    oscillator.type = 'sine'
-                    const start = now + index * 0.11
+                    oscillator.type = 'triangle'
+                    const start = now + index * 0.095
                     oscillator.frequency.setValueAtTime(frequency, start)
+                    oscillator.frequency.exponentialRampToValueAtTime(Math.max(700, frequency - 190), start + 0.06)
                     gainNode.gain.setValueAtTime(0.0001, start)
-                    gainNode.gain.exponentialRampToValueAtTime(0.12, start + 0.02)
-                    gainNode.gain.exponentialRampToValueAtTime(0.0001, start + 0.16)
+                    gainNode.gain.exponentialRampToValueAtTime(0.18, start + 0.012)
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, start + 0.085)
                     oscillator.start(start)
-                    oscillator.stop(start + 0.16)
+                    oscillator.stop(start + 0.085)
                 })
             } catch (e) { }
         }

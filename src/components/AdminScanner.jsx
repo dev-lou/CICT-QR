@@ -138,18 +138,27 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         try {
             const ctx = await ensureAdminAudioReady()
             if (!ctx) return
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.type = 'sine';
             const start = ctx.currentTime + 0.005
-            osc.frequency.setValueAtTime(980, start)
-            gain.gain.setValueAtTime(0.0001, start)
-            gain.gain.exponentialRampToValueAtTime(0.14, start + 0.015)
-            gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16)
-            osc.start(start)
-            osc.stop(start + 0.16)
+            const burstDelays = [0, 0.095]
+
+            burstDelays.forEach((delay) => {
+                const osc = ctx.createOscillator()
+                const gain = ctx.createGain()
+                osc.connect(gain)
+                gain.connect(ctx.destination)
+                osc.type = 'triangle'
+
+                const t0 = start + delay
+                osc.frequency.setValueAtTime(1450, t0)
+                osc.frequency.exponentialRampToValueAtTime(1180, t0 + 0.055)
+
+                gain.gain.setValueAtTime(0.0001, t0)
+                gain.gain.exponentialRampToValueAtTime(0.2, t0 + 0.01)
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.075)
+
+                osc.start(t0)
+                osc.stop(t0 + 0.075)
+            })
         } catch (e) { }
     }, [ensureAdminAudioReady]);
 
