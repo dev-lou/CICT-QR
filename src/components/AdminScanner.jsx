@@ -61,12 +61,27 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const [queuedItems, setQueuedItems] = useState([]) // snapshot for UI
     const queueFlushInterval = useRef(null)
     const recentScansRef = useRef({}) // debounce tracking: { [uuid]: timestamp }
+    const handleScanRef = useRef(null) // always points to latest handleScan (avoids stale closure in QR scanner)
+    const broadcastChannelRef = useRef(null) // persistent broadcast channel for scan notifications
 
     // helpers used by realtime subscriptions to debounce reloads
     const logUpdateTimeoutRef = useRef(null)
     const staffUpdateTimeoutRef = useRef(null)
 
     const [scanModal, setScanModal] = useState(null) // { type, name, message }
+
+    // Subscribe to broadcast channel once on mount so .send() actually works
+    useEffect(() => {
+        if (!supabase) return
+        const ch = supabase.channel('scan-notifications')
+        ch.subscribe((status) => {
+            if (status === 'SUBSCRIBED') broadcastChannelRef.current = ch
+        })
+        return () => {
+            supabase.removeChannel(ch)
+            broadcastChannelRef.current = null
+        }
+    }, [])
 
     // Synthetic scanner beep using Web Audio API (single reusable context)
     const audioCtxRef = useRef(null)
@@ -487,13 +502,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
                     } else {
                         // SUCCESS! Broadcast to shared Global Student Listener channel
-                        try {
-                            await supabase.channel('scan-notifications').send({
-                                type: 'broadcast',
-                                event: 'scan-detected',
-                                payload: { uuid, type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
-                            })
-                        } catch (e) { console.error('Broadcast failed', e) }
+                        if (broadcastChannelRef.current) {
+                            try {
+                                await broadcastChannelRef.current.send({
+                                    type: 'broadcast',
+                                    event: 'scan-detected',
+                                    payload: { uuid, type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
+                                })
+                            } catch (e) { console.error('Broadcast failed', e) }
+                        }
                     }
 
                     // Blocking Admin Modal
@@ -595,17 +612,21 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         processingRef.current = false
     }, [playBeep, mode, isOnline, eventMode, getManilaDayBoundsUTC])
 
+    // Keep ref always pointing to latest handleScan (avoids stale closure in QR scanner callback)
+    useEffect(() => { handleScanRef.current = handleScan }, [handleScan])
+
     const startScanner = useCallback(async () => {
         if (html5QrCodeRef.current) return
         try {
             const qr = new Html5Qrcode('qr-reader')
             html5QrCodeRef.current = qr
-            await qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 }, aspectRatio: 1 }, (txt) => handleScan(txt), () => { })
+            // Use ref indirection so scanner always calls the LATEST handleScan even if mode/isOnline/eventMode changes
+            await qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 }, aspectRatio: 1 }, (txt) => { if (handleScanRef.current) handleScanRef.current(txt) }, () => { })
             setScanning(true)
         } catch (err) {
             setScanModal({ type: 'error', name: '', message: 'Camera access denied or unavailable.' })
         }
-    }, [handleScan])
+    }, [])
 
     const stopScanner = useCallback(async () => {
         if (html5QrCodeRef.current) {
