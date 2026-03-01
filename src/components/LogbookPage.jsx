@@ -3,13 +3,17 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
+const getTodayManilaDayKey = () => {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+}
+
 export default function LogbookPage({ uuid }) {
     const navigate = useNavigate()
     const [myStudent, setMyStudent] = useState(null)
     const [logbook, setLogbook] = useState([])
     const [loading, setLoading] = useState(true)
     const [filter, setFilter] = useState('all')
-    const [dayFilter, setDayFilter] = useState('all')
+    const [dayFilter, setDayFilter] = useState(() => getTodayManilaDayKey())
     const [myRole, setMyRole] = useState('student')
     const [currentPage, setCurrentPage] = useState(1)
     const [initialJump, setInitialJump] = useState(true)

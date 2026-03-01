@@ -8,6 +8,19 @@ import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
+// ─── XSS-safe HTML escaping ─────────────────────────────────────────────────
+const _esc = (s) => {
+    if (!s) return ''
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+const getTodayManilaDayKey = () => {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+}
+
+// ─── UUID v4 format validation ──────────────────────────────────────────────
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export default function AdminScanner({ onLogout, onNavigateManageData, onNavigateAudit, onNavigateTally, onNavigateHistory }) {
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState('scanner') // 'scanner', 'logbook', 'staff', 'pending'
@@ -55,17 +68,21 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     const [scanModal, setScanModal] = useState(null) // { type, name, message }
 
-    // Synthetic scanner beep using Web Audio API
+    // Synthetic scanner beep using Web Audio API (single reusable context)
+    const audioCtxRef = useRef(null)
     const playBeep = useCallback(() => {
         try {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            const ctx = new AudioContext();
+            const ACClass = window.AudioContext || window.webkitAudioContext;
+            if (!ACClass) return;
+            if (!audioCtxRef.current) audioCtxRef.current = new ACClass();
+            const ctx = audioCtxRef.current;
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, ctx.currentTime); // High pitch scanner beep
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
             gain.gain.setValueAtTime(0.1, ctx.currentTime);
             osc.start();
             gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.15);
@@ -77,7 +94,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const [logbook, setLogbook] = useState([])
     const [logLoading, setLogLoading] = useState(false)
     const [logFilter, setLogFilter] = useState('all') // 'all' | 'in' | 'out'
-    const [dayFilter, setDayFilter] = useState('all')
+    const [dayFilter, setDayFilter] = useState(() => getTodayManilaDayKey())
     const [currentPage, setCurrentPage] = useState(1)
     const [logSearch, setLogSearch] = useState('')
     const [initialLogJump, setInitialLogJump] = useState(true)
@@ -87,7 +104,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const [staffLogbook, setStaffLogbook] = useState([])
     const [staffLogLoading, setStaffLogLoading] = useState(false)
     const [staffLogFilter, setStaffLogFilter] = useState('all')
-    const [staffDayFilter, setStaffDayFilter] = useState('all')
+    const [staffDayFilter, setStaffDayFilter] = useState(() => getTodayManilaDayKey())
     const [staffSearch, setStaffSearch] = useState('')
     const [staffPage, setStaffPage] = useState(1)
     const [initialStaffJump, setInitialStaffJump] = useState(true)
@@ -321,6 +338,27 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         processingRef.current = true
 
         const uuid = decodedText.trim()
+
+        // Instant reject non-UUID QR codes (URLs, coupons, random text)
+        if (!UUID_RE.test(uuid)) {
+            await Swal.fire({
+                icon: 'error',
+                title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Invalid QR code</span>`,
+                html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem;">This is not a valid attendance QR code.</div>`,
+                confirmButtonText: 'SCAN NEXT',
+                confirmButtonColor: '#ef4444',
+                background: '#1e293b',
+                color: '#ffffff',
+                backdrop: 'rgba(15,23,42,0.85)',
+                padding: '2rem',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+            })
+            processingRef.current = false
+            return
+        }
+
         const now = Date.now()
         const duplicateWindowMs = eventMode ? 6000 : 3000
 
@@ -359,8 +397,9 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
             if (student) {
                 const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
-                const teamLabel = student.team_name?.trim() ? student.team_name : 'No Team'
-                const roleLabel = student.role ? `${student.role.charAt(0).toUpperCase()}${student.role.slice(1)}` : (isStaff ? 'Staff' : 'Student')
+                const teamLabel = _esc(student.team_name?.trim() ? student.team_name : 'No Team')
+                const roleLabel = _esc(student.role ? `${student.role.charAt(0).toUpperCase()}${student.role.slice(1)}` : (isStaff ? 'Staff' : 'Student'))
+                const safeName = _esc(student.full_name)
 
                 // 🚀 INSTANT DATABASE INSERT
                 let dbStatus = 'error'
@@ -374,7 +413,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         icon: 'warning',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Attendance already recorded</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
-                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${student.full_name}</div>
+                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
                             <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">Already checked in today.</span></div>
@@ -394,7 +433,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         icon: 'warning',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">No active check-in found</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
-                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${student.full_name}</div>
+                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
                             <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">Check-in is required before check-out.</span></div>
@@ -417,12 +456,12 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         setQueuedItems([...scanQueueRef.current])
                         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
                     } else {
-                        // SUCCESS! Broadcast to Global Student Listener
+                        // SUCCESS! Broadcast to shared Global Student Listener channel
                         try {
-                            await supabase.channel(`scans-${uuid}`).send({
+                            await supabase.channel('scan-notifications').send({
                                 type: 'broadcast',
                                 event: 'scan-detected',
-                                payload: { type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
+                                payload: { uuid, type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
                             })
                         } catch (e) { console.error('Broadcast failed', e) }
                     }
@@ -432,7 +471,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         icon: dbStatus === 'error' ? 'info' : 'success',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${dbStatus === 'error' ? 'Saved to offline queue' : (mode === 'time-in' ? 'Check-in recorded' : 'Check-out recorded')}</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
-                            <div style="font-size: 1rem; font-weight: 800; color: ${dbStatus === 'error' ? '#f59e0b' : '#C9A84C'}; margin-bottom: 0.25rem;">${student.full_name}</div>
+                            <div style="font-size: 1rem; font-weight: 800; color: ${dbStatus === 'error' ? '#f59e0b' : '#C9A84C'}; margin-bottom: 0.25rem;">${safeName}</div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
                             <div><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: ${dbStatus === 'error' ? '#f59e0b' : '#10b981'};">${dbStatus === 'error' ? 'Pending sync (offline)' : 'Synced to database'}</span></div>
@@ -481,7 +520,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                 icon: 'warning',
                                 title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Attendance already recorded</span>`,
                                 html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
-                                    <div><span style="color: rgba(255,255,255,0.55);">Participant:</span> <span style="font-weight: 700; color: #C9A84C;">${recoveredStudent.full_name}</span></div>
+                                    <div><span style="color: rgba(255,255,255,0.55);">Participant:</span> <span style="font-weight: 700; color: #C9A84C;">${_esc(recoveredStudent.full_name)}</span></div>
                                     <div style="margin-top: 0.25rem;">A scan may already have been saved. Please continue to next participant.</div>
                                 </div>`,
                                 confirmButtonText: 'SCAN NEXT',
@@ -555,7 +594,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
             const { data: student } = await supabase.from('students').select('id, full_name, role').eq('uuid', trimmed).single()
             if (!student) {
-                results.push({ uuid: trimmed, status: 'missing' })
+                results.push({ item, uuid: trimmed, status: 'missing' })
                 continue
             }
 
@@ -568,7 +607,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 // 1. Check for Active Session (already checked in but not out)
                 const { data: existing } = await supabase.from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
                 if (existing && existing.length > 0) {
-                    results.push({ uuid: trimmed, status: 'duplicate' })
+                    results.push({ item, uuid: trimmed, status: 'duplicate' })
                     continue
                 }
 
@@ -581,15 +620,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     .limit(1)
 
                 if (todayRecords && todayRecords.length > 0) {
-                    results.push({ uuid: trimmed, status: 'already_scanned_today' })
+                    results.push({ item, uuid: trimmed, status: 'already_scanned_today' })
                     continue
                 }
 
                 const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
                 if (insertErr) {
-                    results.push({ uuid: trimmed, status: 'error', message: insertErr.message })
+                    results.push({ item, uuid: trimmed, status: 'error', message: insertErr.message })
                 } else {
-                    results.push({ uuid: trimmed, status: 'ok' })
+                    results.push({ item, uuid: trimmed, status: 'ok' })
                     await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: currentMode, uuid: trimmed } }]).catch(() => { })
                 }
             } else {
@@ -597,13 +636,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 if (active && active.length > 0) {
                     const { error: updateErr } = await supabase.from(table).update({ time_out: new Date().toISOString() }).eq('id', active[0].id)
                     if (updateErr) {
-                        results.push({ uuid: trimmed, status: 'error', message: updateErr.message })
+                        results.push({ item, uuid: trimmed, status: 'error', message: updateErr.message })
                     } else {
-                        results.push({ uuid: trimmed, status: 'ok' })
+                        results.push({ item, uuid: trimmed, status: 'ok' })
                         await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN_OUT', details: { uuid: trimmed } }]).catch(() => { })
                     }
                 } else {
-                    results.push({ uuid: trimmed, status: 'not_checked_in' })
+                    results.push({ item, uuid: trimmed, status: 'not_checked_in' })
                 }
             }
         }
@@ -635,13 +674,43 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Queue is already synced.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
             return
         }
+        if (!isOnline) {
+            Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Still offline. Cannot sync yet.', showConfirmButton: false, timer: 2200, background: '#1e293b', color: '#fff' })
+            return
+        }
         const batch = scanQueueRef.current.splice(0)
         setQueueSize(scanQueueRef.current.length)
         setQueuedItems([...scanQueueRef.current])
         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
         try {
-            await processScanBatch(batch, mode)
-            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Synced to database.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
+            const results = await processScanBatch(batch, mode)
+
+            const failedStatuses = new Set(['error'])
+            const failedItems = results
+                .filter((result) => failedStatuses.has(result.status))
+                .map((result) => (typeof result.item === 'string' ? { uuid: result.uuid } : result.item))
+
+            if (failedItems.length > 0) {
+                scanQueueRef.current.unshift(...failedItems)
+                setQueueSize(scanQueueRef.current.length)
+                setQueuedItems([...scanQueueRef.current])
+                localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+
+                const okCount = results.filter((result) => result.status === 'ok').length
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'warning',
+                    title: `${okCount} synced, ${failedItems.length} kept in queue.`,
+                    showConfirmButton: false,
+                    timer: 2600,
+                    background: '#1e293b',
+                    color: '#fff'
+                })
+            } else {
+                const okCount = results.filter((result) => result.status === 'ok').length
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `${okCount} item(s) synced to database.`, showConfirmButton: false, timer: 2200, background: '#1e293b', color: '#fff' })
+            }
         } catch (e) {
             console.error('manual sync failed', e)
             scanQueueRef.current.unshift(...batch)
@@ -650,7 +719,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
             Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Sync failed. Are you offline?', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
         }
-    }, [mode])
+    }, [mode, isOnline])
 
     useEffect(() => () => { if (html5QrCodeRef.current) html5QrCodeRef.current.stop().catch(() => { }) }, [])
 

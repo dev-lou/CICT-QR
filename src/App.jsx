@@ -13,8 +13,14 @@ import PublicScoreboard from './components/PublicScoreboard'
 import { supabase } from './lib/supabase'
 import Swal from 'sweetalert2'
 
+// ─── XSS-safe HTML escaping ─────────────────────────────────────────────────
+const _esc = (s) => {
+    if (!s) return ''
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
 // ─── Global Student Listener ───────────────────────────────────────────────────
-// Listens to the scanning broadcast on ANY page (Dashboard, Logbook, etc.)
+// Listens to a single shared broadcast channel, filters by own UUID client-side
 function GlobalStudentListener({ uuid }) {
     useEffect(() => {
         if (!uuid || !supabase) return
@@ -66,8 +72,10 @@ function GlobalStudentListener({ uuid }) {
             const { data: student } = await supabase.from('students').select('id, full_name, team_name, role').eq('uuid', uuid).single()
             if (!student) return
 
-            globalChannel = supabase.channel(`scans-${uuid}`)
+            globalChannel = supabase.channel('scan-notifications')
                 .on('broadcast', { event: 'scan-detected' }, (payload) => {
+                    // Filter: only react to broadcasts for THIS student
+                    if (payload.payload?.uuid !== uuid) return
                     const scanType = payload.payload?.type === 'out' ? 'out' : 'in'
                     playStudentConfirmationSound(scanType)
                     const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
@@ -106,7 +114,7 @@ function GlobalStudentListener({ uuid }) {
                         </style>
                         <div class="student-confirm-card">
                             <div class="student-confirm-icon-wrap">${iconMarkup}</div>
-                            <div class="student-confirm-name">${student.full_name}</div>
+                            <div class="student-confirm-name">${_esc(student.full_name)}</div>
                             <div class="student-confirm-sub">Attendance recorded successfully</div>
                             <div class="student-confirm-status" style="color: ${statusColor};">
                                 <span style="display:inline-block;width:7px;height:7px;border-radius:999px;background:${statusColor};"></span>
@@ -115,11 +123,11 @@ function GlobalStudentListener({ uuid }) {
                             <div class="student-confirm-grid">
                                 <div class="student-confirm-cell">
                                     <div class="student-confirm-k">Team</div>
-                                    <div class="student-confirm-v">${teamLabel}</div>
+                                    <div class="student-confirm-v">${_esc(teamLabel)}</div>
                                 </div>
                                 <div class="student-confirm-cell">
                                     <div class="student-confirm-k">Role</div>
-                                    <div class="student-confirm-v">${roleLabel}</div>
+                                    <div class="student-confirm-v">${_esc(roleLabel)}</div>
                                 </div>
                                 <div class="student-confirm-cell">
                                     <div class="student-confirm-k">Time</div>
@@ -219,6 +227,7 @@ function AdminRoot() {
     }
 
     const logout = () => {
+        localStorage.removeItem('admin_session')
         sessionStorage.removeItem('admin_logged_in')
         setIsAdminLoggedIn(false)
     }

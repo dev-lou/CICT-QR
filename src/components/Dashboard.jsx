@@ -360,7 +360,7 @@ export default function Dashboard({ uuid }) {
                     style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center' }}
                 >
                     <a
-                        href="/it-week-attendance.apk"
+                        href={`/it-week-attendance.apk?v=${import.meta.env.VITE_APK_VERSION || '1'}`}
                         download="IT_Week_Attendance.apk"
                         style={{
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem',
@@ -385,7 +385,7 @@ export default function Dashboard({ uuid }) {
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M17.523 15.3414C17.523 15.3414 17.523 15.3414 17.523 15.3414C17.523 16.0315 16.9634 16.5912 16.2733 16.5912C15.5832 16.5912 15.0235 16.0315 15.0235 15.3414C15.0235 14.6514 15.5832 14.0917 16.2733 14.0917C16.9634 14.0917 17.523 14.6514 17.523 15.3414ZM7.72666 16.5912C8.41676 16.5912 8.97645 16.0315 8.97645 15.3414C8.97645 14.6514 8.41676 14.0917 7.72666 14.0917C7.03657 14.0917 6.47688 14.6514 6.47688 15.3414C6.47688 16.0315 7.03657 16.5912 7.72666 16.5912ZM17.1083 8.35824L18.9174 5.225A0.342171 0.342171 0.0 0 0 18.7909 4.75549A0.342171 0.342171 0.0 0 0 18.3214 4.882L16.4866 8.06013C15.1388 7.44318 13.6192 7.08779 12 7.08779C10.3808 7.08779 8.86121 7.44318 7.51336 8.06013L5.67861 4.882A0.342171 0.342171 0.0 0 0 5.2091 4.75549A0.342171 0.342171 0.0 0 0 5.08258 5.225L6.89169 8.35824C3.12061 10.4285 0.536761 14.4079 0.121948 19.1172H23.8781C23.4632 14.4079 20.8794 10.4285 17.1083 8.35824Z" />
                         </svg>
-                        GET ANDROID APP
+                        {`GET ANDROID APP (v${import.meta.env.VITE_APK_VERSION || '1'})`}
                     </a>
                 </motion.div>
 

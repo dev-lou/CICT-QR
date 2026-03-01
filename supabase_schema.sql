@@ -15,6 +15,16 @@ INSERT INTO admins (email, password)
 VALUES ('admin@isufst.edu', 'admin123')
 ON CONFLICT (email) DO NOTHING;
 
+-- 1B. ADMIN SESSIONS TABLE (token used by x-admin-session header)
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token      TEXT PRIMARY KEY,
+  admin_id   BIGINT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS admin_sessions_admin_id_idx ON admin_sessions(admin_id);
+CREATE INDEX IF NOT EXISTS admin_sessions_expires_at_idx ON admin_sessions(expires_at);
+
 -- 2. TEAMS TABLE
 CREATE TABLE IF NOT EXISTS teams (
   id   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

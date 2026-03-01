@@ -11,20 +11,75 @@ ALTER TABLE public.logbook ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staff_logbook ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_sessions ENABLE ROW LEVEL SECURITY;
 
 -- 2. Create an Admin verification function (used in policies)
--- Admins are stored in auth.users, but since this app also uses 'executive'/'officer'
--- directly in the 'students' table without Supabase Auth in some instances,
--- we check if the user has a valid Supabase Auth JWT.
+-- Uses x-admin-session header (validated against admin_sessions) OR service_role.
 CREATE OR REPLACE FUNCTION is_admin()
 RETURNS BOOLEAN AS $$
+DECLARE
+    headers_json JSONB;
+    session_token TEXT;
 BEGIN
-    -- Temporary override: Allow client-side scanning inserts since the custom Admin 
-    -- login does not use Supabase Auth natively. The security is currently handled 
-    -- by the frontend route protection and the obscured UUIDs.
-    RETURN true;
+    -- service_role always allowed
+    IF auth.role() = 'service_role' THEN
+        RETURN true;
+    END IF;
+
+    -- read request headers from PostgREST/Supabase context
+    headers_json := COALESCE(NULLIF(current_setting('request.headers', true), '')::jsonb, '{}'::jsonb);
+    session_token := NULLIF(headers_json ->> 'x-admin-session', '');
+
+    IF session_token IS NULL THEN
+        RETURN false;
+    END IF;
+
+    RETURN EXISTS (
+        SELECT 1
+        FROM public.admin_sessions s
+        WHERE s.token = session_token
+          AND s.expires_at > NOW()
+    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+REVOKE ALL ON FUNCTION is_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION is_admin() TO anon, authenticated, service_role;
+
+-- ==========================================
+-- 🔐 ADMINS TABLE
+-- ==========================================
+
+DROP POLICY IF EXISTS "Service role can read admins" ON public.admins;
+CREATE POLICY "Service role can read admins"
+ON public.admins FOR SELECT
+USING (auth.role() = 'service_role');
+
+DROP POLICY IF EXISTS "Service role can insert admins" ON public.admins;
+CREATE POLICY "Service role can insert admins"
+ON public.admins FOR INSERT
+WITH CHECK (auth.role() = 'service_role');
+
+DROP POLICY IF EXISTS "Service role can update admins" ON public.admins;
+CREATE POLICY "Service role can update admins"
+ON public.admins FOR UPDATE
+USING (auth.role() = 'service_role');
+
+DROP POLICY IF EXISTS "Service role can delete admins" ON public.admins;
+CREATE POLICY "Service role can delete admins"
+ON public.admins FOR DELETE
+USING (auth.role() = 'service_role');
+
+-- ==========================================
+-- 🔐 ADMIN SESSIONS TABLE
+-- ==========================================
+
+DROP POLICY IF EXISTS "Service role can manage admin_sessions" ON public.admin_sessions;
+CREATE POLICY "Service role can manage admin_sessions"
+ON public.admin_sessions FOR ALL
+USING (auth.role() = 'service_role')
+WITH CHECK (auth.role() = 'service_role');
 
 
 -- ==========================================

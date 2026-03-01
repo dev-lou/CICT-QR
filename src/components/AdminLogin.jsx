@@ -14,16 +14,63 @@ export default function AdminLogin({ onLogin }) {
         if (!email.trim() || !password) { setError('Please enter your email and password.'); return }
         setLoading(true); setError('')
         try {
-            if (!supabase) throw new Error('Supabase is not configured.')
-            const { data, error: dbError } = await supabase
-                .from('admins')
-                .select('id, email')
-                .eq('email', email.trim().toLowerCase())
-                .eq('password', password)
-                .single()
-            if (dbError || !data) throw new Error('Invalid email or password.')
-            localStorage.setItem('admin_session', JSON.stringify({ id: data.id, email: data.email }))
-            onLogin(data)
+            const response = await fetch('/api/admin-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email.trim().toLowerCase(), password })
+            })
+
+            const rawText = await response.text()
+            const body = (() => {
+                try { return rawText ? JSON.parse(rawText) : {} } catch { return {} }
+            })()
+
+            if (!response.ok || !body?.session) {
+                if (response.status === 404) {
+                    if (!supabase) {
+                        throw new Error('Admin login API route not found and Supabase client is unavailable.')
+                    }
+
+                    const { data: rpcSession, error: rpcError } = await supabase.rpc('admin_login', {
+                        p_email: email.trim().toLowerCase(),
+                        p_password: password
+                    })
+
+                    if (rpcError) {
+                        throw new Error(rpcError.message || 'Local admin login fallback failed.')
+                    }
+
+                    if (!rpcSession?.token || !rpcSession?.email || !rpcSession?.id) {
+                        throw new Error('Invalid email or password.')
+                    }
+
+                    const localSession = {
+                        id: rpcSession.id,
+                        email: rpcSession.email,
+                        token: rpcSession.token,
+                        expires_at: rpcSession.expires_at
+                    }
+
+                    localStorage.setItem('admin_session', JSON.stringify(localSession))
+                    onLogin({ id: localSession.id, email: localSession.email })
+                    window.location.reload()
+                    return
+                }
+                throw new Error(body?.error || `Admin login failed (HTTP ${response.status}).`)
+            }
+
+            const session = {
+                id: body.session.id,
+                email: body.session.email,
+                token: body.session.token,
+                expires_at: body.session.expires_at
+            }
+
+            localStorage.setItem('admin_session', JSON.stringify(session))
+            onLogin({ id: session.id, email: session.email })
+
+            // Recreate Supabase client with x-admin-session header loaded from localStorage
+            window.location.reload()
         } catch (err) {
             setError(err.message || 'Login failed.')
         } finally {

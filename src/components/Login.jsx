@@ -172,7 +172,7 @@ export default function Login({ onLogin, onGoRegister }) {
                     style={{ marginTop: '2.5rem', textAlign: 'center' }}
                 >
                     <a
-                        href="/it-week-attendance.apk"
+                        href={`/it-week-attendance.apk?v=${import.meta.env.VITE_APK_VERSION || '1'}`}
                         download="IT_Week_Attendance.apk"
                         style={{
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem',
@@ -187,7 +187,7 @@ export default function Login({ onLogin, onGoRegister }) {
                         <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#C9A84C" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
-                        Download Android Application
+                        {`Download Android Application (v${import.meta.env.VITE_APK_VERSION || '1'})`}
                     </a>
                 </motion.div>
             </motion.div>
