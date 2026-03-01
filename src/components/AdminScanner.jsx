@@ -371,6 +371,41 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         playBeep()
 
+        // If device is fully offline, capture UUID immediately for later sync.
+        if (!isOnline) {
+            scanQueueRef.current.push({
+                uuid,
+                name: 'Pending verification',
+                mode,
+                queued_at: new Date().toISOString()
+            })
+            setQueueSize(scanQueueRef.current.length)
+            setQueuedItems([...scanQueueRef.current])
+            localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+
+            await Swal.fire({
+                icon: 'info',
+                title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Offline scan captured</span>`,
+                html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                    <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">QR source:</span> <span style="font-weight: 700; color: #ffffff;">Printed or screenshot works</span></div>
+                    <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #f59e0b;">Saved to offline queue</span></div>
+                    <div>Connect to internet later and press <b>Sync Now</b>.</div>
+                </div>`,
+                confirmButtonText: 'SCAN NEXT',
+                confirmButtonColor: '#f59e0b',
+                background: '#1e293b',
+                color: '#ffffff',
+                backdrop: `rgba(15,23,42,0.85)`,
+                padding: '2rem',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+            })
+
+            processingRef.current = false
+            return
+        }
+
         // 3. Query student details for the modal and broadcast
         try {
             const { data: student, error: studentErr } = await supabase.from('students').select('id, full_name, team_name, role').eq('uuid', uuid).single()
@@ -404,7 +439,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 // 🚀 INSTANT DATABASE INSERT
                 let dbStatus = 'error'
                 if (isOnline) {
-                    const results = await processScanBatch([{ uuid, name: student.full_name }], mode)
+                    const results = await processScanBatch([{ uuid, name: student.full_name, mode }], mode)
                     if (results.length > 0) dbStatus = results[0].status
                 }
 
@@ -451,7 +486,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 } else {
                     if (dbStatus === 'error' || !isOnline) {
                         // OFFLINE QUEUE: Only queue if the internet or database fails
-                        scanQueueRef.current.push({ uuid, name: student.full_name })
+                        scanQueueRef.current.push({ uuid, name: student.full_name, mode, queued_at: new Date().toISOString() })
                         setQueueSize(scanQueueRef.current.length)
                         setQueuedItems([...scanQueueRef.current])
                         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
@@ -590,6 +625,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             // Backward compatibility for generic string arrays from old caches
             const rawUuid = typeof item === 'string' ? item : item?.uuid
             const trimmed = rawUuid ? rawUuid.trim() : ''
+            const modeForItem = typeof item === 'string' ? currentMode : (item?.mode || currentMode)
             if (!trimmed) continue
 
             const { data: student } = await supabase.from('students').select('id, full_name, role').eq('uuid', trimmed).single()
@@ -601,7 +637,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
             const table = isStaff ? 'staff_logbook' : 'logbook'
 
-            if (currentMode === 'time-in') {
+            if (modeForItem === 'time-in') {
                 const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
 
                 // 1. Check for Active Session (already checked in but not out)
@@ -629,7 +665,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     results.push({ item, uuid: trimmed, status: 'error', message: insertErr.message })
                 } else {
                     results.push({ item, uuid: trimmed, status: 'ok' })
-                    await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: currentMode, uuid: trimmed } }]).catch(() => { })
+                    await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: modeForItem, uuid: trimmed } }]).catch(() => { })
                 }
             } else {
                 const { data: active } = await supabase.from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
@@ -1176,9 +1212,9 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                         onClick={() => setEventMode((prev) => !prev)}
                                         style={{
                                             borderRadius: '999px',
-                                            border: `1px solid ${eventMode ? 'rgba(16,185,129,0.45)' : 'rgba(255,255,255,0.15)'}`,
-                                            background: eventMode ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.04)',
-                                            color: eventMode ? '#34d399' : 'rgba(255,255,255,0.7)',
+                                            border: `1px solid ${eventMode ? 'rgba(16,185,129,0.55)' : 'rgba(239,68,68,0.55)'}`,
+                                            background: eventMode ? 'rgba(16,185,129,0.16)' : 'rgba(239,68,68,0.16)',
+                                            color: eventMode ? '#34d399' : '#f87171',
                                             fontWeight: 800,
                                             fontSize: '0.7rem',
                                             letterSpacing: '0.08em',
@@ -1187,10 +1223,10 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                             textTransform: 'uppercase'
                                         }}
                                     >
-                                        Event Mode {eventMode ? 'On' : 'Off'}
+                                        Event Mode {eventMode ? 'On ✅' : 'Off ❌'}
                                     </button>
                                 </div>
-                                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', fontWeight: 600 }}>
+                                <div style={{ color: eventMode ? 'rgba(52,211,153,0.9)' : 'rgba(248,113,113,0.9)', fontSize: '0.72rem', fontWeight: 700 }}>
                                     {eventMode ? 'Stability profile enabled: longer duplicate guard and reduced non-essential realtime listeners.' : 'Standard profile enabled.'}
                                 </div>
                                 <div className="mode-toggle" style={{ width: '100%', gap: '0.5rem', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '1rem' }}>
@@ -1827,7 +1863,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                     <ul style={{ marginTop: '1rem', listStyle: 'none', padding: 0, maxHeight: '300px', overflowY: 'auto' }}>
                                         {queuedItems.map((item, i) => (
                                             <li key={i} style={{ padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between' }}>
-                                                <span style={{ fontWeight: 700, color: 'white' }}>{typeof item === 'string' ? 'Unknown Name' : item.name}</span>
+                                                <span style={{ fontWeight: 700, color: 'white' }}>{typeof item === 'string' ? 'Pending verification' : (item.name || 'Pending verification')}</span>
                                                 <span style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.3)' }}>{typeof item === 'string' ? item : item.uuid}</span>
                                             </li>
                                         ))}
