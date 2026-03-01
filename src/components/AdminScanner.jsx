@@ -103,6 +103,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     // Staff Logbook state (leaders + facilitators)
     const [staffLogbook, setStaffLogbook] = useState([])
     const [staffLogLoading, setStaffLogLoading] = useState(false)
+    const [staffLogError, setStaffLogError] = useState('')
+    const staffFetchedRef = useRef(false)
     const [staffLogFilter, setStaffLogFilter] = useState('all')
     const [staffDayFilter, setStaffDayFilter] = useState(() => getTodayManilaDayKey())
     const [staffSearch, setStaffSearch] = useState('')
@@ -200,37 +202,45 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const fetchStaffLogbook = useCallback(async () => {
         if (!supabase) return
         setStaffLogLoading(true)
+        setStaffLogError('')
+        // Safety timeout: force-clear loading after 12s in case query hangs on mobile
+        const safetyTimer = setTimeout(() => {
+            setStaffLogLoading(false)
+            setStaffLogError('Request timed out. Tap REFRESH to retry.')
+        }, 12000)
         try {
             const { data, error } = await supabase
                 .from('staff_logbook')
-                .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
+                .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
                 .order('time_in', { ascending: true })
 
+            clearTimeout(safetyTimer)
             if (error) throw error
             setStaffLogbook(data || [])
+            staffFetchedRef.current = true
             if (initialStaffJump && data && data.length > pageSize) {
                 const lp = Math.ceil(data.length / pageSize)
                 setStaffPage(lp)
                 setInitialStaffJump(false)
             }
         } catch (err) {
-            console.error('Failed to load staff logbook:', err.message)
+            clearTimeout(safetyTimer)
+            console.error('Failed to load staff logbook:', err.message || err)
+            setStaffLogError(err.message || 'Failed to load staff logbook.')
         } finally {
             setStaffLogLoading(false)
         }
     }, [])
 
     useEffect(() => { setStaffPage(1) }, [staffLogFilter, staffDayFilter, activeTab, staffSearch])
+    // Fetch staff logbook when staff tab becomes active (lazy load instead of on mount)
     useEffect(() => {
+        if (activeTab !== 'staff') return
         const handler = setTimeout(() => {
-            if (activeTab === 'staff') fetchStaffLogbook()
-        }, 500)
+            fetchStaffLogbook()
+        }, staffFetchedRef.current ? 500 : 0) // instant first time, debounced after
         return () => clearTimeout(handler)
     }, [staffSearch, activeTab, fetchStaffLogbook])
-
-    useEffect(() => {
-        fetchStaffLogbook()
-    }, [fetchStaffLogbook])
 
     const fetchStats = useCallback(async () => {
         if (!supabase) return
@@ -1690,7 +1700,14 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             <div className="luxury-card">
                                 {staffLogLoading ? (
                                     <div style={{ padding: '5rem 2rem', textAlign: 'center' }}>
-                                        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#C9A84C', letterSpacing: '0.1em' }}>DECRYPTING STAFF ARCHIVE...</div>
+                                        <div className="skeleton-gold" style={{ width: '3rem', height: '3rem', borderRadius: '50%', margin: '0 auto 1.5rem' }} />
+                                        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#C9A84C', letterSpacing: '0.1em' }}>LOADING STAFF RECORDS...</div>
+                                    </div>
+                                ) : staffLogError ? (
+                                    <div style={{ padding: '5rem 2rem', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '1.125rem', fontWeight: 900, color: '#ef4444', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>FAILED TO LOAD</div>
+                                        <div style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600, marginBottom: '1.5rem' }}>{staffLogError}</div>
+                                        <button onClick={fetchStaffLogbook} style={{ padding: '0.75rem 1.5rem', borderRadius: '0.875rem', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.3)', color: '#C9A84C', fontSize: '0.8125rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>RETRY</button>
                                     </div>
                                 ) : filteredStaff.length === 0 ? (
                                     <div style={{ padding: '5rem 2rem', textAlign: 'center' }}>
