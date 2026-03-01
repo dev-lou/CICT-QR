@@ -226,7 +226,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         try {
             const { data, error } = await supabase
                 .from('staff_logbook')
-                .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
+                .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
                 .order('time_in', { ascending: true })
 
             clearTimeout(safetyTimer)
@@ -446,11 +446,19 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 const roleLabel = _esc(student.role ? `${student.role.charAt(0).toUpperCase()}${student.role.slice(1)}` : (isStaff ? 'Staff' : 'Student'))
                 const safeName = _esc(student.full_name)
 
-                // 🚀 INSTANT DATABASE INSERT
+                // 🚀 INSTANT DATABASE INSERT (with 10s timeout safety)
                 let dbStatus = 'error'
                 if (isOnline) {
-                    const results = await processScanBatch([{ uuid, name: student.full_name, mode }], mode)
-                    if (results.length > 0) dbStatus = results[0].status
+                    try {
+                        const results = await Promise.race([
+                            processScanBatch([{ uuid, name: student.full_name, mode }], mode),
+                            new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 10000))
+                        ])
+                        if (results.length > 0) dbStatus = results[0].status
+                    } catch (batchErr) {
+                        console.error('processScanBatch failed or timed out:', batchErr)
+                        dbStatus = 'error'
+                    }
                 }
 
                 if (dbStatus === 'duplicate' || dbStatus === 'already_scanned_today') {
@@ -501,19 +509,17 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         setQueuedItems([...scanQueueRef.current])
                         localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
                     } else {
-                        // SUCCESS! Broadcast to shared Global Student Listener channel
+                        // SUCCESS! Broadcast to student device (fire-and-forget, NEVER await — send() can hang on flaky connections)
                         if (broadcastChannelRef.current) {
-                            try {
-                                await broadcastChannelRef.current.send({
-                                    type: 'broadcast',
-                                    event: 'scan-detected',
-                                    payload: { uuid, type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
-                                })
-                            } catch (e) { console.error('Broadcast failed', e) }
+                            broadcastChannelRef.current.send({
+                                type: 'broadcast',
+                                event: 'scan-detected',
+                                payload: { uuid, type: mode === 'time-in' ? 'in' : 'out', name: student.full_name }
+                            }).catch(e => console.error('Broadcast failed', e))
                         }
                     }
 
-                    // Blocking Admin Modal
+                    // Blocking Admin Modal — ALWAYS shows regardless of broadcast result
                     await Swal.fire({
                         icon: dbStatus === 'error' ? 'info' : 'success',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${dbStatus === 'error' ? 'Saved to offline queue' : (mode === 'time-in' ? 'Check-in recorded' : 'Check-out recorded')}</span>`,
@@ -611,6 +617,18 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         // Allow next scan only after OK is clicked
         processingRef.current = false
     }, [playBeep, mode, isOnline, eventMode, getManilaDayBoundsUTC])
+
+    // SAFETY NET: If handleScan somehow fails to show Swal and processingRef stays locked,
+    // auto‑unlock after 15s so scanning isn't permanently blocked
+    useEffect(() => {
+        const id = setInterval(() => {
+            if (processingRef.current && !document.querySelector('.swal2-container')) {
+                console.warn('[Scanner] processingRef was stuck – auto‑reset')
+                processingRef.current = false
+            }
+        }, 15000)
+        return () => clearInterval(id)
+    }, [])
 
     // Keep ref always pointing to latest handleScan (avoids stale closure in QR scanner callback)
     useEffect(() => { handleScanRef.current = handleScan }, [handleScan])
