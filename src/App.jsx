@@ -27,29 +27,41 @@ function GlobalStudentListener({ uuid }) {
 
         let globalChannel = null
         let audioContext = null
+        let hasUserGesture = false
 
-        const playStudentConfirmationSound = (scanType = 'in') => {
+        const ensureStudentAudioReady = async () => {
             try {
+                if (!hasUserGesture) return null
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext
-                if (!AudioContextClass) return
+                if (!AudioContextClass) return null
                 audioContext = audioContext || new AudioContextClass()
                 if (audioContext.state === 'suspended') {
-                    audioContext.resume().catch(() => { })
+                    await audioContext.resume()
                 }
+                return audioContext
+            } catch {
+                return null
+            }
+        }
 
-                const now = audioContext.currentTime
+        const playStudentConfirmationSound = async (scanType = 'in') => {
+            try {
+                const context = await ensureStudentAudioReady()
+                if (!context) return
+
+                const now = context.currentTime + 0.005
                 const notes = scanType === 'out' ? [780, 980] : [980, 1240]
 
                 notes.forEach((frequency, index) => {
-                    const oscillator = audioContext.createOscillator()
-                    const gainNode = audioContext.createGain()
+                    const oscillator = context.createOscillator()
+                    const gainNode = context.createGain()
                     oscillator.connect(gainNode)
-                    gainNode.connect(audioContext.destination)
+                    gainNode.connect(context.destination)
                     oscillator.type = 'sine'
                     const start = now + index * 0.11
                     oscillator.frequency.setValueAtTime(frequency, start)
                     gainNode.gain.setValueAtTime(0.0001, start)
-                    gainNode.gain.exponentialRampToValueAtTime(0.09, start + 0.02)
+                    gainNode.gain.exponentialRampToValueAtTime(0.12, start + 0.02)
                     gainNode.gain.exponentialRampToValueAtTime(0.0001, start + 0.16)
                     oscillator.start(start)
                     oscillator.stop(start + 0.16)
@@ -58,12 +70,15 @@ function GlobalStudentListener({ uuid }) {
         }
 
         const unlockAudio = () => {
-            playStudentConfirmationSound()
+            hasUserGesture = true
+            ensureStudentAudioReady().catch(() => { })
             window.removeEventListener('click', unlockAudio)
+            window.removeEventListener('pointerdown', unlockAudio)
             window.removeEventListener('touchstart', unlockAudio)
             window.removeEventListener('keydown', unlockAudio)
         }
         window.addEventListener('click', unlockAudio, { once: true })
+        window.addEventListener('pointerdown', unlockAudio, { once: true })
         window.addEventListener('touchstart', unlockAudio, { once: true })
         window.addEventListener('keydown', unlockAudio, { once: true })
 
@@ -77,7 +92,7 @@ function GlobalStudentListener({ uuid }) {
                     // Filter: only react to broadcasts for THIS student
                     if (payload.payload?.uuid !== uuid) return
                     const scanType = payload.payload?.type === 'out' ? 'out' : 'in'
-                    playStudentConfirmationSound(scanType)
+                    playStudentConfirmationSound(scanType).catch(() => { })
                     const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
                     const action = scanType === 'in' ? 'Checked in' : 'Checked out'
                     const roleLabel = isStaff ? 'Staff' : 'Student'
@@ -161,6 +176,7 @@ function GlobalStudentListener({ uuid }) {
 
         return () => {
             window.removeEventListener('click', unlockAudio)
+            window.removeEventListener('pointerdown', unlockAudio)
             window.removeEventListener('touchstart', unlockAudio)
             window.removeEventListener('keydown', unlockAudio)
             if (globalChannel) supabase.removeChannel(globalChannel)

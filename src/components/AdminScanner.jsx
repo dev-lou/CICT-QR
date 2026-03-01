@@ -121,25 +121,60 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     // Synthetic scanner beep using Web Audio API (single reusable context)
     const audioCtxRef = useRef(null)
-    const playBeep = useCallback(() => {
+    const ensureAdminAudioReady = useCallback(async () => {
         try {
-            const ACClass = window.AudioContext || window.webkitAudioContext;
-            if (!ACClass) return;
-            if (!audioCtxRef.current) audioCtxRef.current = new ACClass();
-            const ctx = audioCtxRef.current;
-            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+            const ACClass = window.AudioContext || window.webkitAudioContext
+            if (!ACClass) return null
+            if (!audioCtxRef.current) audioCtxRef.current = new ACClass()
+            const ctx = audioCtxRef.current
+            if (ctx.state === 'suspended') {
+                await ctx.resume()
+            }
+            return ctx
+        } catch {
+            return null
+        }
+    }, [])
+
+    const playBeep = useCallback(async () => {
+        try {
+            const ctx = await ensureAdminAudioReady()
+            if (!ctx) return
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, ctx.currentTime);
-            gain.gain.setValueAtTime(0.1, ctx.currentTime);
-            osc.start();
-            gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.15);
-            osc.stop(ctx.currentTime + 0.15);
+            const start = ctx.currentTime + 0.005
+            osc.frequency.setValueAtTime(980, start)
+            gain.gain.setValueAtTime(0.0001, start)
+            gain.gain.exponentialRampToValueAtTime(0.14, start + 0.015)
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16)
+            osc.start(start)
+            osc.stop(start + 0.16)
         } catch (e) { }
-    }, []);
+    }, [ensureAdminAudioReady]);
+
+    useEffect(() => {
+        const unlockAdminAudio = () => {
+            ensureAdminAudioReady().catch(() => { })
+            window.removeEventListener('pointerdown', unlockAdminAudio)
+            window.removeEventListener('touchstart', unlockAdminAudio)
+            window.removeEventListener('keydown', unlockAdminAudio)
+        }
+        window.addEventListener('pointerdown', unlockAdminAudio, { once: true })
+        window.addEventListener('touchstart', unlockAdminAudio, { once: true })
+        window.addEventListener('keydown', unlockAdminAudio, { once: true })
+        return () => {
+            window.removeEventListener('pointerdown', unlockAdminAudio)
+            window.removeEventListener('touchstart', unlockAdminAudio)
+            window.removeEventListener('keydown', unlockAdminAudio)
+            if (audioCtxRef.current && typeof audioCtxRef.current.close === 'function') {
+                audioCtxRef.current.close().catch(() => { })
+            }
+            audioCtxRef.current = null
+        }
+    }, [ensureAdminAudioReady])
 
     // Student Logbook state
     const [logbook, setLogbook] = useState([])
