@@ -609,12 +609,12 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 if (dbStatus === 'duplicate' || dbStatus === 'already_scanned_today') {
                     await Swal.fire({
                         icon: 'warning',
-                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">User already registered in this queue.</span>`,
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Already checked in today</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
                             <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
-                            <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">Duplicate save was blocked before database insert.</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">This user is already checked in for today.</span></div>
                         </div>`,
                         confirmButtonText: 'Scan Next',
                         confirmButtonColor: '#f59e0b',
@@ -684,6 +684,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Action:</span> <span style="font-weight: 700; color: #ffffff;">${mode === 'time-in' ? 'Check-in' : 'Check-out'}</span></div>
                             <div><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #10b981;">Synced to database ✓</span></div>
                         </div>`,
                         confirmButtonText: 'Scan Next',
