@@ -121,8 +121,10 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     // Synthetic scanner beep using Web Audio API (single reusable context)
     const audioCtxRef = useRef(null)
+    const hasUserGestureRef = useRef(Boolean(document?.userActivation?.hasBeenActive))
     const ensureAdminAudioReady = useCallback(async () => {
         try {
+            if (!hasUserGestureRef.current && !document?.userActivation?.hasBeenActive) return null
             const ACClass = window.AudioContext || window.webkitAudioContext
             if (!ACClass) return null
             if (!audioCtxRef.current) audioCtxRef.current = new ACClass()
@@ -157,10 +159,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     useEffect(() => {
         const unlockAdminAudio = () => {
-            ensureAdminAudioReady().catch(() => { })
-            window.removeEventListener('pointerdown', unlockAdminAudio)
-            window.removeEventListener('touchstart', unlockAdminAudio)
-            window.removeEventListener('keydown', unlockAdminAudio)
+            hasUserGestureRef.current = true
+            ensureAdminAudioReady()
+                .then((ctx) => {
+                    if (!ctx) return
+                    window.removeEventListener('pointerdown', unlockAdminAudio)
+                    window.removeEventListener('touchstart', unlockAdminAudio)
+                    window.removeEventListener('keydown', unlockAdminAudio)
+                })
+                .catch(() => { })
         }
         window.addEventListener('pointerdown', unlockAdminAudio, { once: true })
         window.addEventListener('touchstart', unlockAdminAudio, { once: true })
@@ -438,6 +445,18 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
     }, [mode])
 
+    const fireScanAlert = useCallback((options) => {
+        return Swal.fire({
+            ...options,
+            didOpen: (popup) => {
+                playBeep().catch(() => { })
+                if (typeof options?.didOpen === 'function') {
+                    options.didOpen(popup)
+                }
+            }
+        })
+    }, [playBeep])
+
     // push decoded text into a queue for later processing; immediate blocking modal & broadcast
     const handleScan = useCallback(async (decodedText) => {
         // Prevent re-entry if admin hasn't clicked OK or if it's processing
@@ -448,7 +467,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         // Instant reject non-UUID QR codes (URLs, coupons, random text)
         if (!UUID_RE.test(uuid)) {
-            await Swal.fire({
+            await fireScanAlert({
                 icon: 'error',
                 title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Invalid QR code</span>`,
                 html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem;">This is not a valid attendance QR code.</div>`,
@@ -476,8 +495,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
         recentScansRef.current[uuid] = now
 
-        playBeep()
-
         // Resolve true backend connectivity (do not trust UI online/offline events alone)
         const backendConnected = await hasBackendConnection()
 
@@ -501,7 +518,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
             }
 
-            await Swal.fire({
+            await fireScanAlert({
                 icon: alreadyQueued ? 'warning' : 'info',
                 title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${alreadyQueued ? 'User already registered in this queue.' : 'Offline scan captured'}</span>`,
                 html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -527,7 +544,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         try {
             const { data: student, error: studentErr } = await supabase.from('students').select('id, full_name, team_name, role').eq('uuid', uuid).single()
             if (studentErr || !student) {
-                await Swal.fire({
+                await fireScanAlert({
                     icon: 'error',
                     title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Participant not found</span>`,
                     html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -642,7 +659,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 }
 
                 if (dbStatus === 'duplicate' || dbStatus === 'already_scanned_today') {
-                    await Swal.fire({
+                    await fireScanAlert({
                         icon: 'warning',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Already checked in today</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -662,7 +679,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
                     })
                 } else if (dbStatus === 'not_checked_in') {
-                    await Swal.fire({
+                    await fireScanAlert({
                         icon: 'warning',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">No active check-in found</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -683,7 +700,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     })
                 } else if (dbStatus === 'error') {
                     // DB failed while online — show error, do NOT queue to offline
-                    await Swal.fire({
+                    await fireScanAlert({
                         icon: 'error',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Save failed — try again</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -712,7 +729,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         }).catch(e => console.error('Broadcast failed', e))
                     }
 
-                    await Swal.fire({
+                    await fireScanAlert({
                         icon: 'success',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">User Successfully Scanned!</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -759,7 +776,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
                         if (todayRecords && todayRecords.length > 0) {
                             recovered = true
-                            await Swal.fire({
+                            await fireScanAlert({
                                 icon: 'warning',
                                 title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Attendance already recorded</span>`,
                                 html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -784,7 +801,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             }
 
             if (!recovered) {
-                await Swal.fire({
+                await fireScanAlert({
                     icon: 'error',
                     title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Unable to process QR code</span>`,
                     html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -806,7 +823,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         // Allow next scan only after OK is clicked
         processingRef.current = false
-    }, [playBeep, mode, eventMode, getManilaDayBoundsUTC, hasBackendConnection])
+    }, [fireScanAlert, mode, eventMode, getManilaDayBoundsUTC, hasBackendConnection])
 
     // SAFETY NET: If handleScan somehow fails to show Swal and processingRef stays locked,
     // auto‑unlock after 15s so scanning isn't permanently blocked

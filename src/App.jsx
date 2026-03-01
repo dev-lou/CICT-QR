@@ -27,7 +27,7 @@ function GlobalStudentListener({ uuid }) {
 
         let globalChannel = null
         let audioContext = null
-        let hasUserGesture = false
+        let hasUserGesture = Boolean(document?.userActivation?.hasBeenActive)
 
         const ensureStudentAudioReady = async () => {
             try {
@@ -71,11 +71,15 @@ function GlobalStudentListener({ uuid }) {
 
         const unlockAudio = () => {
             hasUserGesture = true
-            ensureStudentAudioReady().catch(() => { })
-            window.removeEventListener('click', unlockAudio)
-            window.removeEventListener('pointerdown', unlockAudio)
-            window.removeEventListener('touchstart', unlockAudio)
-            window.removeEventListener('keydown', unlockAudio)
+            ensureStudentAudioReady()
+                .then((ctx) => {
+                    if (!ctx) return
+                    window.removeEventListener('click', unlockAudio)
+                    window.removeEventListener('pointerdown', unlockAudio)
+                    window.removeEventListener('touchstart', unlockAudio)
+                    window.removeEventListener('keydown', unlockAudio)
+                })
+                .catch(() => { })
         }
         window.addEventListener('click', unlockAudio, { once: true })
         window.addEventListener('pointerdown', unlockAudio, { once: true })
@@ -92,7 +96,6 @@ function GlobalStudentListener({ uuid }) {
                     // Filter: only react to broadcasts for THIS student
                     if (payload.payload?.uuid !== uuid) return
                     const scanType = payload.payload?.type === 'out' ? 'out' : 'in'
-                    playStudentConfirmationSound(scanType).catch(() => { })
                     const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
                     const action = scanType === 'in' ? 'Checked in' : 'Checked out'
                     const roleLabel = isStaff ? 'Staff' : 'Student'
@@ -166,6 +169,9 @@ function GlobalStudentListener({ uuid }) {
                         customClass: {
                             popup: 'luxury-swal-popup',
                             confirmButton: 'luxury-swal-btn'
+                        },
+                        didOpen: () => {
+                            playStudentConfirmationSound(scanType).catch(() => { })
                         }
                     })
                 })
