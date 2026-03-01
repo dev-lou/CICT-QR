@@ -96,9 +96,11 @@ function GlobalStudentListener({ uuid }) {
                     // Filter: only react to broadcasts for THIS student
                     if (payload.payload?.uuid !== uuid) return
                     const scanType = payload.payload?.type === 'out' ? 'out' : 'in'
-                    const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
+                    const normalizedRole = String(student.role || 'student').trim().toLowerCase()
                     const action = scanType === 'in' ? 'Checked in' : 'Checked out'
-                    const roleLabel = isStaff ? 'Staff' : 'Student'
+                    const roleLabel = normalizedRole
+                        ? `${normalizedRole.charAt(0).toUpperCase()}${normalizedRole.slice(1)}`
+                        : 'Student'
                     const teamLabel = student.team_name?.trim() || 'Unassigned Team'
                     const statusColor = scanType === 'in' ? '#10b981' : '#60a5fa'
                     const iconMarkup = scanType === 'in'
@@ -112,7 +114,6 @@ function GlobalStudentListener({ uuid }) {
                     })
 
                     Swal.fire({
-                        icon: 'success',
                         title: `<span style="color: #ffffff; font-weight: 900; font-size: 1.2rem; letter-spacing: 0.02em;">${scanType === 'in' ? 'Check-in Confirmed' : 'Check-out Confirmed'}</span>`,
                         html: `<style>
                             .student-confirm-card { color: rgba(255,255,255,0.92); text-align: left; }
