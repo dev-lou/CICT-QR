@@ -254,18 +254,18 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         if (!supabase) return
         setStaffLogLoading(true)
         setStaffLogError('')
-        // Safety timeout: force-clear loading after 12s in case query hangs on mobile
-        const safetyTimer = setTimeout(() => {
-            setStaffLogLoading(false)
-            setStaffLogError('Request timed out. Tap REFRESH to retry.')
-        }, 12000)
         try {
-            const { data, error } = await supabase
-                .from('staff_logbook')
-                .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
-                .order('time_in', { ascending: true })
+            const backendConnected = await hasBackendConnection()
+            if (!backendConnected) throw new Error('No backend connection. Please reconnect and retry.')
 
-            clearTimeout(safetyTimer)
+            const { data, error } = await Promise.race([
+                supabase
+                    .from('staff_logbook')
+                    .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
+                    .order('time_in', { ascending: true }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out. Tap REFRESH to retry.')), 12000))
+            ])
+
             if (error) throw error
             setStaffLogbook(data || [])
             staffFetchedRef.current = true
@@ -275,13 +275,39 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 setInitialStaffJump(false)
             }
         } catch (err) {
-            clearTimeout(safetyTimer)
-            console.error('Failed to load staff logbook:', err.message || err)
-            setStaffLogError(err.message || 'Failed to load staff logbook.')
+            const message = err?.message || 'Failed to load staff logbook.'
+            const isTimeout = String(message).toLowerCase().includes('timed out')
+
+            if (isTimeout) {
+                try {
+                    const { data: fallbackData, error: fallbackError } = await supabase
+                        .from('staff_logbook')
+                        .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
+                        .order('time_in', { ascending: false })
+                        .limit(500)
+
+                    if (fallbackError) throw fallbackError
+                    const normalized = [...(fallbackData || [])].reverse()
+                    setStaffLogbook(normalized)
+                    staffFetchedRef.current = true
+                    if (initialStaffJump && normalized.length > pageSize) {
+                        const lp = Math.ceil(normalized.length / pageSize)
+                        setStaffPage(lp)
+                        setInitialStaffJump(false)
+                    }
+                    setStaffLogError('Loaded recent staff records due to slow connection. Tap REFRESH to retry full data.')
+                    return
+                } catch (fallbackErr) {
+                    console.error('Fallback staff fetch failed:', fallbackErr?.message || fallbackErr)
+                }
+            }
+
+            console.error('Failed to load staff logbook:', message)
+            setStaffLogError(message)
         } finally {
             setStaffLogLoading(false)
         }
-    }, [])
+    }, [hasBackendConnection, initialStaffJump])
 
     useEffect(() => { setStaffPage(1) }, [staffLogFilter, staffDayFilter, activeTab, staffSearch])
     // Fetch staff logbook when staff tab becomes active (lazy load instead of on mount)
@@ -856,7 +882,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Queue is already synced.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
             return
         }
-        if (!isOnline) {
+        const backendConnected = await hasBackendConnection()
+        if (!backendConnected) {
             Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Still offline. Cannot sync yet.', showConfirmButton: false, timer: 2200, background: '#1e293b', color: '#fff' })
             return
         }
@@ -901,7 +928,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
             Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Sync failed. Are you offline?', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
         }
-    }, [mode, isOnline])
+    }, [mode, hasBackendConnection])
 
     useEffect(() => () => { if (html5QrCodeRef.current) html5QrCodeRef.current.stop().catch(() => { }) }, [])
 
@@ -1673,7 +1700,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                                                             <div>
                                                                 <div style={{ fontWeight: 900, color: 'white', fontSize: '1rem', letterSpacing: '-0.01em' }}>{row.students?.full_name}</div>
-                                                                <div style={{ fontSize: '0.75rem', color: '#C9A84C', fontWeight: 800 }}>{row.students?.team_name?.toUpperCase()}</div>
+                                                                <div style={{ fontSize: '0.75rem', color: '#C9A84C', fontWeight: 800 }}>{(row.students?.team_name || 'UNAFFILIATED').toUpperCase()}</div>
                                                             </div>
                                                             <div style={{
                                                                 padding: '0.35rem 0.75rem', borderRadius: '99px', fontSize: '0.625rem', fontWeight: 900, textTransform: 'uppercase',
@@ -1696,13 +1723,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                         </div>
                                                         <div style={{ fontSize: '0.6875rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700, marginTop: '0.875rem', textAlign: 'right' }}>{fmtDateFull(row.time_in)}</div>
                                                     </motion.div>
-                                                ))}
-                                                {/* Placeholders */}
-                                                {Array.from({ length: pageSize - paginatedLog.length }).map((_, pi) => (
-                                                    <div key={`filler-mob-std-${pi}`}
-                                                        style={{ height: '8rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.03)', borderRadius: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                        <div style={{ width: '30%', height: '4px', background: 'rgba(255,255,255,0.02)', borderRadius: '2px' }} />
-                                                    </div>
                                                 ))}
                                             </div>
                                         </div>
@@ -1953,13 +1973,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                                         </motion.div>
                                                     )
                                                 })}
-                                                {/* Placeholders */}
-                                                {Array.from({ length: pageSize - paginatedStaff.length }).map((_, pi) => (
-                                                    <div key={`filler-mob-stf-${pi}`}
-                                                        style={{ height: '8rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.03)', borderRadius: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                        <div style={{ width: '30%', height: '4px', background: 'rgba(255,255,255,0.02)', borderRadius: '2px' }} />
-                                                    </div>
-                                                ))}
                                             </div>
                                         </div>
 

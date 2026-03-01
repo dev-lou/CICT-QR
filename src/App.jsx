@@ -95,7 +95,7 @@ function GlobalStudentListener({ uuid }) {
 
                     Swal.fire({
                         icon: 'success',
-                        title: `<span style="color: #ffffff; font-weight: 900; font-size: 1.2rem; letter-spacing: 0.02em;">Scan Confirmed</span>`,
+                        title: `<span style="color: #ffffff; font-weight: 900; font-size: 1.2rem; letter-spacing: 0.02em;">${scanType === 'in' ? 'Check-in Confirmed' : 'Check-out Confirmed'}</span>`,
                         html: `<style>
                             .student-confirm-card { color: rgba(255,255,255,0.92); text-align: left; }
                             .student-confirm-icon-wrap { width: 76px; height: 76px; margin: 0 auto 0.9rem; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: linear-gradient(145deg, #7B1C1C, #C9A84C); box-shadow: 0 0 0 6px rgba(201,168,76,0.12), 0 12px 28px rgba(0,0,0,0.35); animation: studentPulse 1.3s ease-out; }
