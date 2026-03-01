@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['logo.png'],
       manifest: {
         id: 'com.isufst.cict.qr',
@@ -54,8 +54,8 @@ export default defineConfig({
       workbox: {
         maximumFileSizeToCacheInBytes: 10000000,
         cleanupOutdatedCaches: true,
-        skipWaiting: false,
-        clientsClaim: false,
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
