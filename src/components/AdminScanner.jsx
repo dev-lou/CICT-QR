@@ -29,6 +29,14 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     // State for main logbook
     const [mode, setMode] = useState('time-in')
+    const [eventMode, setEventMode] = useState(() => {
+        try {
+            const saved = localStorage.getItem('scanner_event_mode')
+            return saved === null ? true : saved === 'true'
+        } catch {
+            return true
+        }
+    })
     const [scanning, setScanning] = useState(false)
     const [scanCount, setScanCount] = useState(0)
     const html5QrCodeRef = useRef(null)
@@ -92,6 +100,45 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         setScanModal(null)
         processingRef.current = false  // allow next scan only after admin dismisses
     }
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('scanner_event_mode', String(eventMode))
+        } catch { }
+    }, [eventMode])
+
+    const getManilaDayBoundsUTC = useCallback(() => {
+        try {
+            const now = new Date()
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Manila',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).formatToParts(now)
+
+            const year = parts.find((p) => p.type === 'year')?.value
+            const month = parts.find((p) => p.type === 'month')?.value
+            const day = parts.find((p) => p.type === 'day')?.value
+
+            if (!year || !month || !day) throw new Error('Unable to resolve Manila day')
+
+            const base = `${year}-${month}-${day}`
+            return {
+                todayStartUTC: new Date(`${base}T00:00:00+08:00`).toISOString(),
+                todayEndUTC: new Date(`${base}T23:59:59.999+08:00`).toISOString()
+            }
+        } catch {
+            const fallbackStart = new Date()
+            fallbackStart.setHours(0, 0, 0, 0)
+            const fallbackEnd = new Date()
+            fallbackEnd.setHours(23, 59, 59, 999)
+            return {
+                todayStartUTC: fallbackStart.toISOString(),
+                todayEndUTC: fallbackEnd.toISOString()
+            }
+        }
+    }, [])
 
     // ─── Student Logbook ─────────────────────────────────────────────────────────
     const fetchLogbook = useCallback(async () => {
@@ -201,11 +248,11 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         fetchLogbook()
         fetchStaffLogbook()
         fetchStats()
-        if (!supabase) return
+        if (!supabase || eventMode) return
         const c1 = supabase.channel('logbook-update').on('postgres_changes', { event: '*', schema: 'public', table: 'logbook' }, () => fetchLogbook()).subscribe()
         const c2 = supabase.channel('staff-update').on('postgres_changes', { event: '*', schema: 'public', table: 'staff_logbook' }, () => fetchStaffLogbook()).subscribe()
         return () => { supabase.removeChannel(c1); supabase.removeChannel(c2); }
-    }, [fetchLogbook, fetchStaffLogbook, fetchStats])
+    }, [fetchLogbook, fetchStaffLogbook, fetchStats, eventMode])
 
     // ─── Scanner ─────────────────────────────────────────────────────────────────
     // original scan handler, kept around for reference (not used when middle tier active)
@@ -275,9 +322,10 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         const uuid = decodedText.trim()
         const now = Date.now()
+        const duplicateWindowMs = eventMode ? 6000 : 3000
 
         // Debounce just in case
-        if (recentScansRef.current[uuid] && now - recentScansRef.current[uuid] < 3000) {
+        if (recentScansRef.current[uuid] && now - recentScansRef.current[uuid] < duplicateWindowMs) {
             processingRef.current = false
             return
         }
@@ -287,13 +335,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         // 3. Query student details for the modal and broadcast
         try {
-            const { data: student } = await supabase.from('students').select('full_name, role').eq('uuid', uuid).single()
+            const { data: student } = await supabase.from('students').select('full_name, team_name, role').eq('uuid', uuid).single()
             if (student) {
                 const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
+                const teamLabel = student.team_name?.trim() ? student.team_name : 'No Team'
+                const roleLabel = student.role ? `${student.role.charAt(0).toUpperCase()}${student.role.slice(1)}` : (isStaff ? 'Staff' : 'Student')
 
                 // 🚀 INSTANT DATABASE INSERT
                 let dbStatus = 'error'
-                if (navigator.onLine) {
+                if (isOnline) {
                     const results = await processScanBatch([{ uuid, name: student.full_name }], mode)
                     if (results.length > 0) dbStatus = results[0].status
                 }
@@ -301,8 +351,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 if (dbStatus === 'duplicate' || dbStatus === 'already_scanned_today') {
                     await Swal.fire({
                         icon: 'warning',
-                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">ALREADY SCANNED TODAY</span>`,
-                        html: `<div style="color: #f59e0b; font-size: 1rem; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name} has already been checked in today.</div>`,
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Attendance already recorded</span>`,
+                        html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${student.full_name}</div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">Already checked in today.</span></div>
+                        </div>`,
                         confirmButtonText: 'SCAN NEXT',
                         confirmButtonColor: '#f59e0b',
                         background: '#1e293b',
@@ -316,8 +371,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 } else if (dbStatus === 'not_checked_in') {
                     await Swal.fire({
                         icon: 'warning',
-                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">NOT LOGGED IN</span>`,
-                        html: `<div style="color: #f59e0b; font-size: 1rem; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name}cannot check out before checking in.</div>`,
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">No active check-in found</span>`,
+                        html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${student.full_name}</div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">Check-in is required before check-out.</span></div>
+                        </div>`,
                         confirmButtonText: 'SCAN NEXT',
                         confirmButtonColor: '#f59e0b',
                         background: '#1e293b',
@@ -329,7 +389,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
                     })
                 } else {
-                    if (dbStatus === 'error' || !navigator.onLine) {
+                    if (dbStatus === 'error' || !isOnline) {
                         // OFFLINE QUEUE: Only queue if the internet or database fails
                         scanQueueRef.current.push({ uuid, name: student.full_name })
                         setQueueSize(scanQueueRef.current.length)
@@ -349,8 +409,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     // Blocking Admin Modal
                     await Swal.fire({
                         icon: dbStatus === 'error' ? 'info' : 'success',
-                        title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">${isStaff ? '⭐' : '🎓'} ${dbStatus === 'error' ? 'SAVED OFFLINE' : (mode === 'time-in' ? 'CHECKED IN' : 'CHECKED OUT')}</span>`,
-                        html: `<div style="color: ${dbStatus === 'error' ? '#f59e0b' : '#C9A84C'}; font-size: 1.125rem; font-weight: 900; margin-top: 0.5rem; text-transform: uppercase;">${student.full_name}</div>`,
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${dbStatus === 'error' ? 'Saved to offline queue' : (mode === 'time-in' ? 'Check-in recorded' : 'Check-out recorded')}</span>`,
+                        html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                            <div style="font-size: 1rem; font-weight: 800; color: ${dbStatus === 'error' ? '#f59e0b' : '#C9A84C'}; margin-bottom: 0.25rem;">${student.full_name}</div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: ${dbStatus === 'error' ? '#f59e0b' : '#10b981'};">${dbStatus === 'error' ? 'Pending sync (offline)' : 'Synced to database'}</span></div>
+                        </div>`,
                         confirmButtonText: 'SCAN NEXT',
                         confirmButtonColor: dbStatus === 'error' ? '#f59e0b' : '#10b981',
                         background: '#1e293b',
@@ -370,8 +435,11 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             // Failsafe error (e.g. invalid QR or connection failure during lookup)
             await Swal.fire({
                 icon: 'error',
-                title: `<span style="color: white; font-weight: 800; font-size: 1.25rem;">UNRECOGNIZED QR</span>`,
-                html: `<div style="color: #ef4444; font-size: 1rem; margin-top: 0.5rem;">This QR code is not registered or you are offline.</div>`,
+                title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Unable to process QR code</span>`,
+                html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                    <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Reason:</span> <span style="font-weight: 700; color: #ef4444;">Code not registered or network unavailable.</span></div>
+                    <div>Please verify the participant QR and internet connection.</div>
+                </div>`,
                 confirmButtonText: 'SCAN NEXT',
                 confirmButtonColor: '#ef4444',
                 background: '#1e293b',
@@ -386,7 +454,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         // Allow next scan only after OK is clicked
         processingRef.current = false
-    }, [playBeep, mode])
+    }, [playBeep, mode, isOnline, eventMode])
 
     const startScanner = useCallback(async () => {
         if (html5QrCodeRef.current) return
@@ -396,7 +464,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             await qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 }, aspectRatio: 1 }, (txt) => handleScan(txt), () => { })
             setScanning(true)
         } catch (err) {
-            setResult({ type: 'error', name: '', message: 'Camera access denied or unavailable.' })
+            setScanModal({ type: 'error', name: '', message: 'Camera access denied or unavailable.' })
         }
     }, [handleScan])
 
@@ -425,20 +493,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             const table = isStaff ? 'staff_logbook' : 'logbook'
 
             if (currentMode === 'time-in') {
-                // Calculate today's boundaries in Philippine Time (PHT: UTC+8)
-                const now = new Date()
-                const phtOffset = 8 * 60 * 60 * 1000
-                const phtNow = new Date(now.getTime() + phtOffset)
-
-                // Get start of today (00:00:00) in PHT, converted back to UTC string for DB
-                const todayStartPHT = new Date(phtNow)
-                todayStartPHT.setUTCHours(0, 0, 0, 0)
-                const todayStartUTC = new Date(todayStartPHT.getTime() - phtOffset).toISOString()
-
-                // Get end of today (23:59:59) in PHT, converted back to UTC string for DB
-                const todayEndPHT = new Date(phtNow)
-                todayEndPHT.setUTCHours(23, 59, 59, 999)
-                const todayEndUTC = new Date(todayEndPHT.getTime() - phtOffset).toISOString()
+                const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
 
                 // 1. Check for Active Session (already checked in but not out)
                 const { data: existing } = await supabase.from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
@@ -978,6 +1033,26 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                         </div>
                                         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8125rem', fontWeight: 600 }}>{mode === 'time-in' ? 'Ready to Check Students In' : 'Ready to Check Students Out'}</div>
                                     </div>
+                                    <button
+                                        onClick={() => setEventMode((prev) => !prev)}
+                                        style={{
+                                            borderRadius: '999px',
+                                            border: `1px solid ${eventMode ? 'rgba(16,185,129,0.45)' : 'rgba(255,255,255,0.15)'}`,
+                                            background: eventMode ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.04)',
+                                            color: eventMode ? '#34d399' : 'rgba(255,255,255,0.7)',
+                                            fontWeight: 800,
+                                            fontSize: '0.7rem',
+                                            letterSpacing: '0.08em',
+                                            padding: '0.5rem 0.8rem',
+                                            cursor: 'pointer',
+                                            textTransform: 'uppercase'
+                                        }}
+                                    >
+                                        Event Mode {eventMode ? 'On' : 'Off'}
+                                    </button>
+                                </div>
+                                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', fontWeight: 600 }}>
+                                    {eventMode ? 'Stability profile enabled: longer duplicate guard and reduced non-essential realtime listeners.' : 'Standard profile enabled.'}
                                 </div>
                                 <div className="mode-toggle" style={{ width: '100%', gap: '0.5rem', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '1rem' }}>
                                     <button className={`mode-toggle-btn ${mode === 'time-in' ? 'active' : ''}`} onClick={() => setMode('time-in')}
