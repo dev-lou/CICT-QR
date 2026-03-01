@@ -20,7 +20,7 @@ const ArrowLeft = () => (
 )
 
 /* ── Main ────────────────────────────────────────────────────────────────── */
-export default function ScoreHistory({ isAdmin, onBack, onNavigateScanner, onNavigateManageData, onNavigateAudit, onNavigateTally, onLogout }) {
+export default function ScoreHistory({ isAdmin, onBack, onNavigateScanner, onNavigateManageData, onNavigateAudit, onNavigateTally, onNavigateTeamExport, onLogout }) {
     const navigate = useNavigate()
     const [logs, setLogs] = useState([])
     const [teams, setTeams] = useState([])
@@ -135,6 +135,10 @@ export default function ScoreHistory({ isAdmin, onBack, onNavigateScanner, onNav
                                                 <button onClick={() => { setMenuOpen(false); }} style={{ width: '100%', textAlign: 'left', padding: '0.75rem 1rem', borderRadius: '0.75rem', border: 'none', background: 'rgba(201,168,76,0.1)', fontSize: '0.8125rem', fontWeight: 700, color: '#C9A84C', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                                     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                     Activity History
+                                                </button>
+                                                <button onClick={() => { setMenuOpen(false); onNavigateTeamExport && onNavigateTeamExport(); }} style={{ width: '100%', textAlign: 'left', padding: '0.75rem 1rem', borderRadius: '0.75rem', border: 'none', background: 'transparent', fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.7)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5V4H2v16h5m10 0v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5m10 0H7" /></svg>
+                                                    Team PDF Export
                                                 </button>
                                                 <button onClick={() => { setMenuOpen(false); navigate('/'); }} style={{ width: '100%', textAlign: 'left', padding: '0.75rem 1rem', borderRadius: '0.75rem', border: 'none', background: 'transparent', fontSize: '0.8125rem', fontWeight: 700, color: 'rgba(255,255,255,0.7)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem', transition: 'all 0.2s' }}
                                                     onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#fff'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.7)'; }}>

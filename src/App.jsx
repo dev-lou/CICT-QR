@@ -207,13 +207,14 @@ function StudentRoot() {
 
 import AdminAuditLog from './components/AdminAuditLog'
 import AdminPointTally from './components/AdminPointTally'
+import AdminTeamExport from './components/AdminTeamExport'
 
 // ─── Admin Auth Guard ─────────────────────────────────────────────────────────
 function AdminRoot() {
     const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(
         () => sessionStorage.getItem('admin_logged_in') === 'true'
     )
-    const [view, setView] = useState('scanner') // 'scanner' | 'manage' | 'audit' | 'tally' | 'history'
+    const [view, setView] = useState('scanner') // 'scanner' | 'manage' | 'audit' | 'tally' | 'history' | 'team-export'
 
     if (!isAdminLoggedIn) {
         return (
@@ -240,6 +241,7 @@ function AdminRoot() {
                 onNavigateAudit={() => setView('audit')}
                 onNavigateTally={() => setView('tally')}
                 onNavigateHistory={() => setView('history')}
+                onNavigateTeamExport={() => setView('team-export')}
             />
         )
     }
@@ -252,6 +254,7 @@ function AdminRoot() {
                 onNavigateHistory={() => setView('history')}
                 onNavigateAudit={() => setView('audit')}
                 onNavigateTally={() => setView('tally')}
+                onNavigateTeamExport={() => setView('team-export')}
             />
         )
     }
@@ -264,6 +267,7 @@ function AdminRoot() {
                 onNavigateHistory={() => setView('history')}
                 onNavigateManageData={() => setView('manage')}
                 onNavigateTally={() => setView('tally')}
+                onNavigateTeamExport={() => setView('team-export')}
             />
         )
     }
@@ -276,6 +280,7 @@ function AdminRoot() {
                 onNavigateHistory={() => setView('history')}
                 onNavigateManageData={() => setView('manage')}
                 onNavigateAudit={() => setView('audit')}
+                onNavigateTeamExport={() => setView('team-export')}
             />
         )
     }
@@ -289,7 +294,21 @@ function AdminRoot() {
                 onNavigateManageData={() => setView('manage')}
                 onNavigateAudit={() => setView('audit')}
                 onNavigateTally={() => setView('tally')}
+                onNavigateTeamExport={() => setView('team-export')}
                 onLogout={logout}
+            />
+        )
+    }
+
+    if (view === 'team-export') {
+        return (
+            <AdminTeamExport
+                onLogout={logout}
+                onNavigateScanner={() => setView('scanner')}
+                onNavigateManageData={() => setView('manage')}
+                onNavigateAudit={() => setView('audit')}
+                onNavigateTally={() => setView('tally')}
+                onNavigateHistory={() => setView('history')}
             />
         )
     }

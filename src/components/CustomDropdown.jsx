@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export default function CustomDropdown({ value, options, onChange, placeholder = 'Select an option', label, dark = false, fontSize = '0.9375rem' }) {
+export default function CustomDropdown({ value, options, onChange, placeholder = 'Select an option', label, dark = false, fontSize = '0.9375rem', menuDirection = 'up' }) {
     const [isOpen, setIsOpen] = useState(false)
     const dropdownRef = useRef(null)
+    const opensDown = menuDirection === 'down'
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -91,7 +92,7 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
                         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                         style={{
                             position: 'absolute',
-                            bottom: 'calc(100% + 8px)',
+                            ...(opensDown ? { top: 'calc(100% + 8px)' } : { bottom: 'calc(100% + 8px)' }),
                             left: 0,
                             right: 0,
                             zIndex: 1000,
@@ -100,8 +101,8 @@ export default function CustomDropdown({ value, options, onChange, placeholder =
                             border: '1px solid',
                             borderColor: dark ? 'rgba(201,168,76,0.2)' : '#e2e8f0',
                             boxShadow: dark
-                                ? '0 -10px 40px -10px rgba(0,0,0,0.5)'
-                                : '0 -10px 25px -5px rgba(0, 0, 0, 0.1)',
+                                ? (opensDown ? '0 10px 40px -10px rgba(0,0,0,0.5)' : '0 -10px 40px -10px rgba(0,0,0,0.5)')
+                                : (opensDown ? '0 10px 25px -5px rgba(0, 0, 0, 0.1)' : '0 -10px 25px -5px rgba(0, 0, 0, 0.1)'),
                             overflow: 'hidden',
                             padding: '0.5rem',
                             backdropFilter: dark ? 'blur(16px)' : 'none'
