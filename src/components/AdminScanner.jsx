@@ -64,10 +64,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const handleScanRef = useRef(null) // always points to latest handleScan (avoids stale closure in QR scanner)
     const broadcastChannelRef = useRef(null) // persistent broadcast channel for scan notifications
 
-    // helpers used by realtime subscriptions to debounce reloads
-    const logUpdateTimeoutRef = useRef(null)
-    const staffUpdateTimeoutRef = useRef(null)
-
     const [scanModal, setScanModal] = useState(null) // { type, name, message }
     const backendStatusRef = useRef({ checkedAt: 0, reachable: navigator.onLine })
 
@@ -373,17 +369,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     useEffect(() => {
         fetchStats()
-        if (!supabase || eventMode) return
-        const c1 = supabase.channel('logbook-update').on('postgres_changes', { event: '*', schema: 'public', table: 'logbook' }, () => {
-            if (logUpdateTimeoutRef.current) clearTimeout(logUpdateTimeoutRef.current)
-            logUpdateTimeoutRef.current = setTimeout(fetchLogbook, 800)
-        }).subscribe()
-        const c2 = supabase.channel('staff-update').on('postgres_changes', { event: '*', schema: 'public', table: 'staff_logbook' }, () => {
-            if (staffUpdateTimeoutRef.current) clearTimeout(staffUpdateTimeoutRef.current)
-            staffUpdateTimeoutRef.current = setTimeout(fetchStaffLogbook, 800)
-        }).subscribe()
-        return () => { supabase.removeChannel(c1); supabase.removeChannel(c2); }
-    }, [fetchLogbook, fetchStaffLogbook, fetchStats, eventMode])
+    }, [fetchStats])
 
     // ─── Scanner ─────────────────────────────────────────────────────────────────
     // original scan handler, kept around for reference (not used when middle tier active)
