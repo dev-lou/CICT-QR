@@ -573,6 +573,39 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     dbStatus = 'error'
                 }
 
+                // Recovery guard: mobile networks may fail the response even if DB already committed.
+                // If we can verify the record now exists, treat as success to avoid false failure modal.
+                if (dbStatus === 'error') {
+                    try {
+                        if (mode === 'time-in') {
+                            const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
+                            const { data: verifyRows } = await supabase
+                                .from(table)
+                                .select('id')
+                                .eq('student_id', student.id)
+                                .gte('time_in', todayStartUTC)
+                                .lte('time_in', todayEndUTC)
+                                .limit(1)
+
+                            if (verifyRows && verifyRows.length > 0) dbStatus = 'ok'
+                        } else {
+                            const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+                            const { data: verifyOut } = await supabase
+                                .from(table)
+                                .select('id')
+                                .eq('student_id', student.id)
+                                .not('time_out', 'is', null)
+                                .gte('time_out', twoMinutesAgo)
+                                .order('time_out', { ascending: false })
+                                .limit(1)
+
+                            if (verifyOut && verifyOut.length > 0) dbStatus = 'ok'
+                        }
+                    } catch (verifyErr) {
+                        console.warn('Unable to verify save-after-error:', verifyErr)
+                    }
+                }
+
                 if (dbStatus === 'duplicate' || dbStatus === 'already_scanned_today') {
                     await Swal.fire({
                         icon: 'warning',
@@ -955,7 +988,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const eventDays = [...new Set(logbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
 
     const filteredLog = logbook.filter((r) => {
-        if (logSearch.trim() && !r.students?.full_name?.toLowerCase().includes(logSearch.trim().toLowerCase())) return false
+        const studentName = (r.students?.full_name || '').toLowerCase()
+        if (logSearch.trim() && !studentName.includes(logSearch.trim().toLowerCase())) return false
         if (dayFilter !== 'all' && dayKey(r.time_in) !== dayFilter) return false
         if (logFilter === 'in') return !r.time_out
         if (logFilter === 'out') return !!r.time_out
@@ -965,7 +999,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     // Staff filter logic (moved from render scope)
     const staffEventDays = [...new Set(staffLogbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
     const filteredStaff = staffLogbook.filter((r) => {
-        if (staffSearch.trim() && !r.students?.full_name?.toLowerCase().includes(staffSearch.trim().toLowerCase())) return false
+        const staffName = (r.students?.full_name || '').toLowerCase()
+        if (staffSearch.trim() && !staffName.includes(staffSearch.trim().toLowerCase())) return false
         if (staffDayFilter !== 'all' && dayKey(r.time_in) !== staffDayFilter) return false
         if (staffLogFilter === 'in') return !r.time_out
         if (staffLogFilter === 'out') return !!r.time_out
