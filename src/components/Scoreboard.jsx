@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../lib/supabase'
@@ -125,6 +125,16 @@ export default function Scoreboard() {
     const [showConfetti, setShowConfetti] = useState(false)
     const [showControls, setShowControls] = useState(false)
     const [winnerScore, setWinnerScore] = useState(0)
+    const countdownRef = useRef(null)
+    const winnerScoreRef = useRef(null)
+
+    // Cleanup all timers on unmount
+    useEffect(() => {
+        return () => {
+            if (countdownRef.current) clearInterval(countdownRef.current)
+            if (winnerScoreRef.current) clearInterval(winnerScoreRef.current)
+        }
+    }, [])
 
     const fetchTeams = useCallback(async () => {
         if (!supabase) return
@@ -138,7 +148,7 @@ export default function Scoreboard() {
         const ch = supabase.channel('scores-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, fetchTeams)
             .subscribe()
-        const poll = setInterval(fetchTeams, 3000)
+        const poll = setInterval(fetchTeams, 15000) // Realtime handles instant updates; poll is just a fallback
         return () => { supabase.removeChannel(ch); clearInterval(poll) }
     }, [fetchTeams])
 
@@ -194,19 +204,21 @@ export default function Scoreboard() {
         // Persist to DB so public scoreboard syncs
         if (supabase) supabase.from('scoreboard_settings').upsert({ id: 1, reveal_state: 'countdown', reveal_countdown: 10 }, { onConflict: 'id' }).then(() => { })
         let c = 10
-        const t = setInterval(() => {
+        if (countdownRef.current) clearInterval(countdownRef.current)
+        countdownRef.current = setInterval(() => {
             c -= 1; setCountdown(c)
             if (supabase) supabase.from('scoreboard_settings').upsert({ id: 1, reveal_countdown: c }, { onConflict: 'id' }).then(() => { })
             if (c <= 0) {
-                clearInterval(t)
+                clearInterval(countdownRef.current); countdownRef.current = null
                 setRevealState('winner'); setShowConfetti(true)
                 if (supabase) supabase.from('scoreboard_settings').upsert({ id: 1, reveal_state: 'winner', reveal_countdown: 0 }, { onConflict: 'id' }).then(() => { })
                 const sorted = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
                 const target = sorted[0]?.score ?? 0
                 let cur = 0; const step = Math.ceil(target / 80)
-                const iv = setInterval(() => {
+                if (winnerScoreRef.current) clearInterval(winnerScoreRef.current)
+                winnerScoreRef.current = setInterval(() => {
                     cur = Math.min(cur + step, target); setWinnerScore(cur)
-                    if (cur >= target) clearInterval(iv)
+                    if (cur >= target) { clearInterval(winnerScoreRef.current); winnerScoreRef.current = null }
                 }, 25)
                 setTimeout(() => setShowConfetti(false), 6000)
             }
@@ -215,6 +227,8 @@ export default function Scoreboard() {
 
     // Called when winner screen is tapped — reveal full scoreboard
     const resetAll = () => {
+        if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+        if (winnerScoreRef.current) { clearInterval(winnerScoreRef.current); winnerScoreRef.current = null }
         setRevealState('idle'); setShowConfetti(false); setWinnerScore(0)
         // Reveal everything when dismissing winner screen
         setHideNames(false); setHideScores(false); setHideTop2(false); setHideBars(false);

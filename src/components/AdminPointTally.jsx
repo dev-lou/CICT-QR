@@ -429,5 +429,3 @@ export default function AdminPointTally({ isPublic = false, onLogout, onNavigate
         </div>
     )
 }
-
-function React() { /* Placeholder */ }

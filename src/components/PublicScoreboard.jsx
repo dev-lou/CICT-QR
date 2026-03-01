@@ -115,11 +115,12 @@ export default function PublicScoreboard() {
         const settingsChan = supabase.channel('pub-settings')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'scoreboard_settings' }, fetchAll)
             .subscribe()
-        const poll = setInterval(fetchAll, 2000)
+        const poll = setInterval(fetchAll, 15000) // Realtime handles instant updates; poll is just a fallback
         return () => {
             supabase.removeChannel(teamChan)
             supabase.removeChannel(settingsChan)
             clearInterval(poll)
+            if (winnerScoreRef.current) { clearInterval(winnerScoreRef.current); winnerScoreRef.current = null }
         }
     }, [])
 
