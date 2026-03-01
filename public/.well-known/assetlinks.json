@@ -7,7 +7,8 @@
       "namespace": "android_app",
       "package_name": "com.isufstcict.qr.twa",
       "sha256_cert_fingerprints": [
-        "F9:DE:89:B6:90:57:37:8B:F1:92:71:9E:40:AA:EF:58:E4:FB:6A:82:1E:F2:80:B3:34:BC:5C:57:E2:09:E1:1E"
+        "F9:DE:89:B6:90:57:37:8B:F1:92:71:9E:40:AA:EF:58:E4:FB:6A:82:1E:F2:80:B3:34:BC:5C:57:E2:09:E1:1E",
+        "F6:D2:29:E1:B0:62:B8:DE:92:77:98:34:6D:BD:5D:99:65:43:70:88:C6:CC:2C:FB:BF:42:0F:B0:AE:55:EB:FB"
       ]
     }
   }
