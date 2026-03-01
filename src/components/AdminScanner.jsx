@@ -335,7 +335,28 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         // 3. Query student details for the modal and broadcast
         try {
-            const { data: student } = await supabase.from('students').select('full_name, team_name, role').eq('uuid', uuid).single()
+            const { data: student, error: studentErr } = await supabase.from('students').select('id, full_name, team_name, role').eq('uuid', uuid).single()
+            if (studentErr || !student) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Participant not found</span>`,
+                    html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                        <div>Please verify that this QR is registered in the attendance system.</div>
+                    </div>`,
+                    confirmButtonText: 'SCAN NEXT',
+                    confirmButtonColor: '#ef4444',
+                    background: '#1e293b',
+                    color: '#ffffff',
+                    backdrop: `rgba(15,23,42,0.85)`,
+                    padding: '2rem',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                })
+                processingRef.current = false
+                return
+            }
+
             if (student) {
                 const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
                 const teamLabel = student.team_name?.trim() ? student.team_name : 'No Team'
@@ -432,29 +453,78 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 }
             }
         } catch (e) {
-            // Failsafe error (e.g. invalid QR or connection failure during lookup)
-            await Swal.fire({
-                icon: 'error',
-                title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Unable to process QR code</span>`,
-                html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
-                    <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Reason:</span> <span style="font-weight: 700; color: #ef4444;">Code not registered or network unavailable.</span></div>
-                    <div>Please verify the participant QR and internet connection.</div>
-                </div>`,
-                confirmButtonText: 'SCAN NEXT',
-                confirmButtonColor: '#ef4444',
-                background: '#1e293b',
-                color: '#ffffff',
-                backdrop: `rgba(15,23,42,0.85)`,
-                padding: '2rem',
-                allowOutsideClick: false,
-                allowEscapeKey: false,
-                customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
-            })
+            let recovered = false
+            try {
+                const { data: recoveredStudent } = await supabase
+                    .from('students')
+                    .select('id, full_name, role')
+                    .eq('uuid', uuid)
+                    .maybeSingle()
+
+                if (recoveredStudent) {
+                    const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(recoveredStudent.role)
+                    const table = isStaff ? 'staff_logbook' : 'logbook'
+
+                    if (mode === 'time-in') {
+                        const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
+                        const { data: todayRecords } = await supabase
+                            .from(table)
+                            .select('id')
+                            .eq('student_id', recoveredStudent.id)
+                            .gte('time_in', todayStartUTC)
+                            .lte('time_in', todayEndUTC)
+                            .limit(1)
+
+                        if (todayRecords && todayRecords.length > 0) {
+                            recovered = true
+                            await Swal.fire({
+                                icon: 'warning',
+                                title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Attendance already recorded</span>`,
+                                html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                                    <div><span style="color: rgba(255,255,255,0.55);">Participant:</span> <span style="font-weight: 700; color: #C9A84C;">${recoveredStudent.full_name}</span></div>
+                                    <div style="margin-top: 0.25rem;">A scan may already have been saved. Please continue to next participant.</div>
+                                </div>`,
+                                confirmButtonText: 'SCAN NEXT',
+                                confirmButtonColor: '#f59e0b',
+                                background: '#1e293b',
+                                color: '#ffffff',
+                                backdrop: `rgba(15,23,42,0.85)`,
+                                padding: '2rem',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                            })
+                        }
+                    }
+                }
+            } catch (recoverErr) {
+                console.error('scan recovery check failed', recoverErr)
+            }
+
+            if (!recovered) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Unable to process QR code</span>`,
+                    html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                        <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Reason:</span> <span style="font-weight: 700; color: #ef4444;">A processing error occurred.</span></div>
+                        <div>Please scan again. If it repeats, check internet stability.</div>
+                    </div>`,
+                    confirmButtonText: 'SCAN NEXT',
+                    confirmButtonColor: '#ef4444',
+                    background: '#1e293b',
+                    color: '#ffffff',
+                    backdrop: `rgba(15,23,42,0.85)`,
+                    padding: '2rem',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                })
+            }
         }
 
         // Allow next scan only after OK is clicked
         processingRef.current = false
-    }, [playBeep, mode, isOnline, eventMode])
+    }, [playBeep, mode, isOnline, eventMode, getManilaDayBoundsUTC])
 
     const startScanner = useCallback(async () => {
         if (html5QrCodeRef.current) return
