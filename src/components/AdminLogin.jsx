@@ -47,6 +47,7 @@ export default function AdminLogin({ onLogin }) {
                     const localSession = {
                         id: rpcSession.id,
                         email: rpcSession.email,
+                        role: 'admin',
                         token: rpcSession.token,
                         expires_at: rpcSession.expires_at
                     }
@@ -62,6 +63,7 @@ export default function AdminLogin({ onLogin }) {
             const session = {
                 id: body.session.id,
                 email: body.session.email,
+                role: String(body.session.role || 'admin').toLowerCase(),
                 token: body.session.token,
                 expires_at: body.session.expires_at
             }

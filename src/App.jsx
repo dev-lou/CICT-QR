@@ -211,10 +211,85 @@ import AdminTeamExport from './components/AdminTeamExport'
 
 // ─── Admin Auth Guard ─────────────────────────────────────────────────────────
 function AdminRoot() {
+    const gatewayUuid = (() => {
+        try {
+            return String(localStorage.getItem('student_uuid') || '').trim()
+        } catch {
+            return ''
+        }
+    })()
     const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(
         () => sessionStorage.getItem('admin_logged_in') === 'true'
     )
     const [view, setView] = useState('scanner') // 'scanner' | 'manage' | 'audit' | 'tally' | 'history' | 'team-export'
+    const [gatewayRole, setGatewayRole] = useState(() => {
+        try {
+            return String(localStorage.getItem('student_role') || '').trim().toLowerCase()
+        } catch {
+            return ''
+        }
+    })
+    const [gatewayRoleChecked, setGatewayRoleChecked] = useState(false)
+    const adminRole = (() => {
+        try {
+            const raw = localStorage.getItem('admin_session')
+            if (!raw) return 'admin'
+            return String(JSON.parse(raw)?.role || 'admin').trim().toLowerCase()
+        } catch {
+            return 'admin'
+        }
+    })()
+    useEffect(() => {
+        let active = true
+        const resolveGatewayRole = async () => {
+            try {
+                if (!gatewayUuid) {
+                    if (active) setGatewayRoleChecked(true)
+                    return
+                }
+
+                if (!supabase) {
+                    if (active) setGatewayRoleChecked(true)
+                    return
+                }
+
+                const { data } = await supabase
+                    .from('students')
+                    .select('role')
+                    .eq('uuid', gatewayUuid)
+                    .maybeSingle()
+
+                if (!active) return
+                const normalized = String(data?.role || localStorage.getItem('student_role') || '').trim().toLowerCase()
+                if (normalized) {
+                    setGatewayRole(normalized)
+                    localStorage.setItem('student_role', normalized)
+                }
+                setGatewayRoleChecked(true)
+            } catch {
+                // Keep cached role if lookup fails
+                if (active) setGatewayRoleChecked(true)
+            }
+        }
+
+        resolveGatewayRole()
+        return () => { active = false }
+    }, [isAdminLoggedIn, gatewayUuid])
+
+    if (!gatewayUuid) {
+        return <Navigate to="/" replace />
+    }
+
+    if (!gatewayRoleChecked) {
+        return <div style={{ minHeight: '100vh', background: '#0f172a' }} />
+    }
+
+    const isGatewayAllowed = gatewayRole === 'executive' || gatewayRole === 'officer'
+    if (!isGatewayAllowed) {
+        return <Navigate to="/" replace />
+    }
+
+    const isOfficerView = gatewayRole === 'officer' || adminRole === 'officer'
 
     if (!isAdminLoggedIn) {
         return (
@@ -233,7 +308,7 @@ function AdminRoot() {
         setIsAdminLoggedIn(false)
     }
 
-    if (view === 'scanner') {
+    if (isOfficerView || view === 'scanner') {
         return (
             <AdminScanner
                 onLogout={logout}
@@ -242,6 +317,7 @@ function AdminRoot() {
                 onNavigateTally={() => setView('tally')}
                 onNavigateHistory={() => setView('history')}
                 onNavigateTeamExport={() => setView('team-export')}
+                isOfficerView={isOfficerView}
             />
         )
     }

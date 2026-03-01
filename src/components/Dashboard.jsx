@@ -26,6 +26,7 @@ export default function Dashboard({ uuid }) {
                 .from('students').select('*').eq('uuid', uuid).single()
             if (dbError) throw dbError
             setStudent(data)
+            localStorage.setItem('student_role', String(data.role || 'student').toLowerCase())
             setEditName(data.full_name)
             setEditTeam(data.team_name)
             setEditRole(data.role || 'student')
@@ -97,6 +98,7 @@ export default function Dashboard({ uuid }) {
 
     const handleLogout = () => {
         localStorage.removeItem('student_uuid')
+        localStorage.removeItem('student_role')
         navigate('/')
         window.location.reload()
     }

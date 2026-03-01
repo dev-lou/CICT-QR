@@ -22,7 +22,7 @@ export default function Login({ onLogin, onGoRegister }) {
 
             const { data, error: dbError } = await supabase
                 .from('students')
-                .select('uuid, full_name, team_name')
+                .select('uuid, full_name, team_name, role')
                 .eq('username', username.trim().toLowerCase())
                 .eq('password', password)
                 .single()
@@ -32,6 +32,7 @@ export default function Login({ onLogin, onGoRegister }) {
             }
 
             localStorage.setItem('student_uuid', data.uuid)
+            localStorage.setItem('student_role', String(data.role || 'student').toLowerCase())
             onLogin(data.uuid)
         } catch (err) {
             setError(err.message || 'Login failed. Please try again.')

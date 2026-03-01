@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   try {
     const { data: admin, error: adminErr } = await supabase
       .from('admins')
-      .select('id, email')
+      .select('*')
       .eq('email', normalizedEmail)
       .eq('password', password)
       .single()
@@ -46,6 +46,7 @@ export default async function handler(req, res) {
       session: {
         id: admin.id,
         email: admin.email,
+        role: String(admin.role || 'admin').toLowerCase(),
         token,
         expires_at: expiresAt
       }
