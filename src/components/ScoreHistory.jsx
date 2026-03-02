@@ -189,6 +189,7 @@ export default function ScoreHistory({ isAdmin, onBack, onNavigateScanner, onNav
                                 onChange={setFilterTeam}
                                 dark={true}
                                 fontSize="0.8125rem"
+                                menuDirection="down"
                             />
                         </div>
                         <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.2)', borderRadius: '0.875rem', padding: '0.25rem' }}>
