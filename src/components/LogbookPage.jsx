@@ -39,6 +39,7 @@ export default function LogbookPage({ uuid }) {
                     const { data, error } = await supabase
                         .from('staff_logbook')
                         .select('id, time_in, time_out, students(id, full_name, team_name, uuid, role)')
+                        .eq('student_id', me.id)
                         .order('time_in', { ascending: true })
                     if (error) throw error
                     setLogbook(data || [])
@@ -53,10 +54,12 @@ export default function LogbookPage({ uuid }) {
                 }
             } else {
                 // Students see the regular logbook
-                const { data: logs } = await supabase
+                const { data: logs, error: logsError } = await supabase
                     .from('logbook')
                     .select('id, time_in, time_out, students(id, full_name, team_name)')
+                    .eq('student_id', me.id)
                     .order('time_in', { ascending: true })
+                if (logsError) throw logsError
                 setLogbook(logs || [])
                 if (initialJump && logs && logs.length > pageSize) {
                     const lp = Math.ceil(logs.length / pageSize)
@@ -285,14 +288,6 @@ export default function LogbookPage({ uuid }) {
                                             </motion.tr>
                                         )
                                     })}
-                                    {/* Placeholders */}
-                                    {Array.from({ length: pageSize - paginatedData.length }).map((_, pi) => (
-                                        <tr key={`filler-${pi}`} style={{ height: '3.75rem', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                                            <td colSpan={8} style={{ padding: '0 1.5rem', opacity: 0.03 }}>
-                                                <div style={{ height: '0.5rem', background: 'white', borderRadius: '4px', width: '100%' }} />
-                                            </td>
-                                        </tr>
-                                    ))}
                                 </tbody>
                             </table>
 
@@ -341,13 +336,6 @@ export default function LogbookPage({ uuid }) {
                                             </motion.div>
                                         )
                                     })}
-                                    {/* Placeholders */}
-                                    {Array.from({ length: pageSize - paginatedData.length }).map((_, pi) => (
-                                        <div key={`filler-mob-${pi}`}
-                                            style={{ height: '8rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.03)', borderRadius: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <div style={{ width: '40%', height: '4px', background: 'rgba(255,255,255,0.02)', borderRadius: '2px' }} />
-                                        </div>
-                                    ))}
                                 </div>
                             </div>
 

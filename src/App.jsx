@@ -232,6 +232,65 @@ function StudentRoot() {
 import AdminAuditLog from './components/AdminAuditLog'
 import AdminPointTally from './components/AdminPointTally'
 import AdminTeamExport from './components/AdminTeamExport'
+import AdminAttendanceFix from './components/AdminAttendanceFix'
+
+function ExecutiveFixRoute() {
+    const gatewayUuid = (() => {
+        try {
+            return String(localStorage.getItem('student_uuid') || '').trim()
+        } catch {
+            return ''
+        }
+    })()
+
+    const [roleChecked, setRoleChecked] = useState(false)
+    const [isExecutive, setIsExecutive] = useState(false)
+
+    useEffect(() => {
+        let active = true
+        const run = async () => {
+            try {
+                if (!gatewayUuid || !supabase) {
+                    if (active) {
+                        setIsExecutive(false)
+                        setRoleChecked(true)
+                    }
+                    return
+                }
+
+                const { data } = await supabase
+                    .from('students')
+                    .select('role')
+                    .eq('uuid', gatewayUuid)
+                    .maybeSingle()
+
+                if (!active) return
+                const role = String(data?.role || localStorage.getItem('student_role') || '').trim().toLowerCase()
+                setIsExecutive(role === 'executive')
+                setRoleChecked(true)
+            } catch {
+                if (active) {
+                    setIsExecutive(false)
+                    setRoleChecked(true)
+                }
+            }
+        }
+
+        run()
+        return () => { active = false }
+    }, [gatewayUuid])
+
+    if (!roleChecked) {
+        return <div style={{ minHeight: '100vh', background: '#0f172a' }} />
+    }
+
+    const isAdminSession = sessionStorage.getItem('admin_logged_in') === 'true'
+    if (!isExecutive || !isAdminSession) {
+        return <Navigate to="/" replace />
+    }
+
+    return <AdminAttendanceFix />
+}
 
 // ─── Admin Auth Guard ─────────────────────────────────────────────────────────
 function AdminRoot() {
@@ -435,6 +494,7 @@ export default function App() {
             <Route path="/" element={<StudentRoot />} />
             <Route path="/logbook" element={<LogbookRoute />} />
             <Route path="/admin" element={<AdminRoot />} />
+            <Route path="/admin-attendance-fix-2026-hidden" element={<ExecutiveFixRoute />} />
             <Route path="/scoreboard" element={<PublicScoreboard />} />
             <Route path="/scoreboard-itweek2026" element={<Scoreboard />} />
             <Route path="/score-history" element={<ScoreHistory />} />

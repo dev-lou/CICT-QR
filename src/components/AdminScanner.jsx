@@ -59,12 +59,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const scanQueueRef = useRef([])            // array of uuid strings
     const [queueSize, setQueueSize] = useState(0)
     const [queuedItems, setQueuedItems] = useState([]) // snapshot for UI
+    const [lastSyncReport, setLastSyncReport] = useState(null)
     const queueFlushInterval = useRef(null)
+    const saveStartedAtRef = useRef(0)
     const recentScansRef = useRef({}) // debounce tracking: { [uuid]: timestamp }
     const handleScanRef = useRef(null) // always points to latest handleScan (avoids stale closure in QR scanner)
     const broadcastChannelRef = useRef(null) // persistent broadcast channel for scan notifications
 
     const [scanModal, setScanModal] = useState(null) // { type, name, message }
+    const [isSavingScan, setIsSavingScan] = useState(false)
     const backendStatusRef = useRef({ checkedAt: 0, reachable: navigator.onLine })
 
     // Subscribe to broadcast channel once on mount so .send() actually works
@@ -457,6 +460,11 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         // Prevent re-entry if admin hasn't clicked OK or if it's processing
         if (processingRef.current) return
         processingRef.current = true
+        const fireResultAlert = async (options) => {
+            setIsSavingScan(false)
+            saveStartedAtRef.current = 0
+            await fireScanAlert(options)
+        }
 
         const uuid = decodedText.trim()
 
@@ -489,6 +497,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             return
         }
         recentScansRef.current[uuid] = now
+        setIsSavingScan(true)
+        saveStartedAtRef.current = Date.now()
 
         // Resolve true backend connectivity (do not trust UI online/offline events alone)
         const backendConnected = await hasBackendConnection()
@@ -513,7 +523,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
             }
 
-            await fireScanAlert({
+            await fireResultAlert({
                 icon: alreadyQueued ? 'warning' : 'info',
                 title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${alreadyQueued ? 'User already registered in this queue.' : 'Offline scan captured'}</span>`,
                 html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -539,7 +549,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         try {
             const { data: student, error: studentErr } = await supabase.from('students').select('id, full_name, team_name, role').eq('uuid', uuid).single()
             if (studentErr || !student) {
-                await fireScanAlert({
+                await fireResultAlert({
                     icon: 'error',
                     title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Participant not found</span>`,
                     html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -603,8 +613,23 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             supabase.from('audit_logs').insert([{ student_id: student.id, action: 'SCAN', details: { mode: 'time-in', uuid } }]).catch(() => {})
                         }
                     } else {
-                        const { data: active } = await supabase.from(table)
-                            .select('id').eq('student_id', student.id).is('time_out', null).limit(1)
+                        let active = null
+                        for (let attempt = 0; attempt < 3; attempt += 1) {
+                            const { data: activeRows } = await supabase.from(table)
+                                .select('id')
+                                .eq('student_id', student.id)
+                                .is('time_out', null)
+                                .limit(1)
+
+                            if (activeRows && activeRows.length > 0) {
+                                active = activeRows
+                                break
+                            }
+
+                            if (attempt < 2) {
+                                await new Promise((resolve) => setTimeout(resolve, 350))
+                            }
+                        }
 
                         if (active && active.length > 0) {
                             const { error: updateErr } = await supabase.from(table)
@@ -654,7 +679,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 }
 
                 if (dbStatus === 'duplicate' || dbStatus === 'already_scanned_today') {
-                    await fireScanAlert({
+                    await fireResultAlert({
                         icon: 'warning',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Already checked in today</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -674,7 +699,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
                     })
                 } else if (dbStatus === 'not_checked_in') {
-                    await fireScanAlert({
+                    await fireResultAlert({
                         icon: 'warning',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">No active check-in found</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -695,7 +720,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     })
                 } else if (dbStatus === 'error') {
                     // DB failed while online — show error, do NOT queue to offline
-                    await fireScanAlert({
+                    await fireResultAlert({
                         icon: 'error',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Save failed — try again</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -724,7 +749,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         }).catch(e => console.error('Broadcast failed', e))
                     }
 
-                    await fireScanAlert({
+                    await fireResultAlert({
                         icon: 'success',
                         title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">User Successfully Scanned!</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -771,7 +796,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
                         if (todayRecords && todayRecords.length > 0) {
                             recovered = true
-                            await fireScanAlert({
+                            await fireResultAlert({
                                 icon: 'warning',
                                 title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Attendance already recorded</span>`,
                                 html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -796,7 +821,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             }
 
             if (!recovered) {
-                await fireScanAlert({
+                await fireResultAlert({
                     icon: 'error',
                     title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Unable to process QR code</span>`,
                     html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
@@ -817,6 +842,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
 
         // Allow next scan only after OK is clicked
+        setIsSavingScan(false)
+        saveStartedAtRef.current = 0
         processingRef.current = false
     }, [fireScanAlert, mode, eventMode, getManilaDayBoundsUTC, hasBackendConnection])
 
@@ -824,13 +851,40 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     // auto‑unlock after 15s so scanning isn't permanently blocked
     useEffect(() => {
         const id = setInterval(() => {
-            if (processingRef.current && !document.querySelector('.swal2-container')) {
-                console.warn('[Scanner] processingRef was stuck – auto‑reset')
+            if (!processingRef.current || document.querySelector('.swal2-container')) return
+
+            if (isSavingScan) {
+                const elapsed = saveStartedAtRef.current ? Date.now() - saveStartedAtRef.current : 0
+                if (elapsed < 20000) return
+
+                console.warn('[Scanner] save request timed out – auto‑unlock after extended wait')
+                setIsSavingScan(false)
+                saveStartedAtRef.current = 0
                 processingRef.current = false
+                Swal.fire({
+                    icon: 'warning',
+                    title: `<span style="color: white; font-weight: 800; font-size: 1.05rem;">Network is taking too long</span>`,
+                    html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.92rem; line-height: 1.5; text-align: left;">Scan lock was released after waiting 20 seconds. Please rescan this user once connection stabilizes.</div>`,
+                    confirmButtonText: 'OK',
+                    confirmButtonColor: '#f59e0b',
+                    background: '#1e293b',
+                    color: '#ffffff',
+                    backdrop: 'rgba(15,23,42,0.85)',
+                    padding: '1.7rem',
+                    allowOutsideClick: false,
+                    allowEscapeKey: true,
+                    customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                }).catch(() => { })
+                return
             }
+
+            console.warn('[Scanner] processingRef was stuck – auto‑reset')
+            setIsSavingScan(false)
+            saveStartedAtRef.current = 0
+            processingRef.current = false
         }, 15000)
         return () => clearInterval(id)
-    }, [])
+    }, [isSavingScan])
 
     // Keep ref always pointing to latest handleScan (avoids stale closure in QR scanner callback)
     useEffect(() => { handleScanRef.current = handleScan }, [handleScan])
@@ -931,7 +985,18 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN_OUT', details: { uuid: trimmed } }]).catch(() => { })
                     }
                 } else {
-                    results.push({ item, uuid: trimmed, status: 'not_checked_in' })
+                    const { data: lastOut } = await supabase.from(table)
+                        .select('id, time_out')
+                        .eq('student_id', student.id)
+                        .not('time_out', 'is', null)
+                        .order('time_out', { ascending: false })
+                        .limit(1)
+
+                    if (lastOut && lastOut.length > 0) {
+                        results.push({ item, uuid: trimmed, status: 'already_checked_out' })
+                    } else {
+                        results.push({ item, uuid: trimmed, status: 'not_checked_in' })
+                    }
                 }
             }
         }
@@ -975,31 +1040,52 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         try {
             const results = await processScanBatch(batch, mode)
 
-            const failedStatuses = new Set(['error'])
-            const failedItems = results
-                .filter((result) => failedStatuses.has(result.status))
+            const retryableStatuses = new Set(['error', 'not_checked_in'])
+            const retryItems = results
+                .filter((result) => retryableStatuses.has(result.status))
                 .map((result) => (typeof result.item === 'string' ? { uuid: result.uuid } : result.item))
 
-            if (failedItems.length > 0) {
-                scanQueueRef.current.unshift(...failedItems)
+            const okCount = results.filter((result) => result.status === 'ok').length
+            const duplicateCount = results.filter((result) => result.status === 'duplicate').length
+            const alreadyTodayCount = results.filter((result) => result.status === 'already_scanned_today').length
+            const alreadyOutCount = results.filter((result) => result.status === 'already_checked_out').length
+            const alreadyCount = duplicateCount + alreadyTodayCount + alreadyOutCount
+            const missingCount = results.filter((result) => result.status === 'missing').length
+            const retryNotCheckedInCount = results.filter((result) => result.status === 'not_checked_in').length
+            const retryErrorCount = results.filter((result) => result.status === 'error').length
+
+            setLastSyncReport({
+                at: new Date().toISOString(),
+                total: batch.length,
+                synced: okCount,
+                retry: retryItems.length,
+                retryNotCheckedIn: retryNotCheckedInCount,
+                retryError: retryErrorCount,
+                duplicate: duplicateCount,
+                alreadyToday: alreadyTodayCount,
+                alreadyCheckedOut: alreadyOutCount,
+                missing: missingCount,
+                failed: false
+            })
+
+            if (retryItems.length > 0) {
+                scanQueueRef.current.unshift(...retryItems)
                 setQueueSize(scanQueueRef.current.length)
                 setQueuedItems([...scanQueueRef.current])
                 localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
 
-                const okCount = results.filter((result) => result.status === 'ok').length
                 Swal.fire({
                     toast: true,
                     position: 'top-end',
                     icon: 'warning',
-                    title: `${okCount} synced, ${failedItems.length} kept in queue.`,
+                    title: `${okCount} synced, ${retryItems.length} kept for retry${alreadyCount > 0 ? `, ${alreadyCount} already-recorded` : ''}${missingCount > 0 ? `, ${missingCount} missing` : ''}.`,
                     showConfirmButton: false,
-                    timer: 2600,
+                    timer: 3200,
                     background: '#1e293b',
                     color: '#fff'
                 })
             } else {
-                const okCount = results.filter((result) => result.status === 'ok').length
-                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `${okCount} item(s) synced to database.`, showConfirmButton: false, timer: 2200, background: '#1e293b', color: '#fff' })
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `${okCount} item(s) synced to database${alreadyCount > 0 ? `, ${alreadyCount} already-recorded` : ''}${missingCount > 0 ? `, ${missingCount} missing` : ''}.`, showConfirmButton: false, timer: 3000, background: '#1e293b', color: '#fff' })
             }
         } catch (e) {
             console.error('manual sync failed', e)
@@ -1007,6 +1093,19 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             setQueueSize(scanQueueRef.current.length)
             setQueuedItems([...scanQueueRef.current])
             localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+            setLastSyncReport({
+                at: new Date().toISOString(),
+                total: batch.length,
+                synced: 0,
+                retry: batch.length,
+                retryNotCheckedIn: 0,
+                retryError: batch.length,
+                duplicate: 0,
+                alreadyToday: 0,
+                alreadyCheckedOut: 0,
+                missing: 0,
+                failed: true
+            })
             Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Sync failed. Are you offline?', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
         }
     }, [mode, hasBackendConnection])
@@ -1224,6 +1323,10 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     70% { box-shadow: 0 0 0 10px rgba(201, 168, 76, 0); }
                     100% { box-shadow: 0 0 0 0 rgba(201, 168, 76, 0); }
                 }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
                 .live-indicator { animation: pulse-gold 2s infinite; }
             `}</style>
 
@@ -1301,6 +1404,28 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                 }}
                             >
                             </motion.button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {isSavingScan && (
+                    <motion.div
+                        key="scan-loading"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        style={{ position: 'fixed', inset: 0, zIndex: 995, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.42)', backdropFilter: 'blur(2px)', pointerEvents: 'none' }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.96, y: 8 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.98, y: 4 }}
+                            style={{ background: 'rgba(30,41,59,0.92)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '1rem', padding: '1rem 1.15rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 10px 26px rgba(0,0,0,0.35)' }}
+                        >
+                            <div style={{ width: '1rem', height: '1rem', borderRadius: '50%', border: '2px solid rgba(201,168,76,0.25)', borderTopColor: '#C9A84C', animation: 'spin 0.8s linear infinite' }} />
+                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#E5E7EB', letterSpacing: '0.03em' }}>Saving scan to database...</div>
                         </motion.div>
                     </motion.div>
                 )}
@@ -2126,6 +2251,24 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                             </li>
                                         ))}
                                     </ul>
+                                )}
+
+                                {lastSyncReport && (
+                                    <div style={{ marginTop: '1rem', padding: '0.9rem 1rem', borderRadius: '0.9rem', border: `1px solid ${lastSyncReport.failed ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.25)'}`, background: lastSyncReport.failed ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.06)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 900, color: lastSyncReport.failed ? '#f87171' : '#34d399', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Last Sync Result</div>
+                                            <div style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.45)', fontWeight: 700 }}>{fmtTime(lastSyncReport.at)}</div>
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
+                                            <span style={{ fontWeight: 800, color: '#ffffff' }}>Total:</span> {lastSyncReport.total} • <span style={{ fontWeight: 800, color: '#10b981' }}>Synced:</span> {lastSyncReport.synced} • <span style={{ fontWeight: 800, color: '#f59e0b' }}>Retry:</span> {lastSyncReport.retry}
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.62)', marginTop: '0.25rem', lineHeight: 1.45 }}>
+                                            Retry reasons — missing check-in: {lastSyncReport.retryNotCheckedIn}, DB/network error: {lastSyncReport.retryError}
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.62)', marginTop: '0.15rem', lineHeight: 1.45 }}>
+                                            Non-retry outcomes — already today: {lastSyncReport.alreadyToday}, duplicate active: {lastSyncReport.duplicate}, already checked out: {lastSyncReport.alreadyCheckedOut}, missing user: {lastSyncReport.missing}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         </motion.div>
