@@ -1712,7 +1712,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                         </span>
                                     </div>
                                     {queueSize > 0 && (
-                                        <button onClick={flushQueue} style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.75rem', background: '#C9A84C', color: '#0f172a', marginLeft: '1rem' }}>Flush Now</button>
+                                        <button onClick={flushQueue} style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.75rem', background: '#C9A84C', color: '#0f172a', marginLeft: '1rem' }}>Sync Now</button>
                                     )}
                                 </div>
                                 <div style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'center' }}>
