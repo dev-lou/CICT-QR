@@ -676,7 +676,17 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             if (updateErr) throw updateErr
                             supabase.from('audit_logs').insert([{ student_id: student.id, action: 'SCAN_OUT', details: { uuid } }]).catch(() => {})
                         } else {
-                            dbStatus = 'not_checked_in'
+                            const todayKey = getTodayManilaDayKey()
+                            const { data: lastOutRows } = await supabase
+                                .from(table)
+                                .select('id, time_in, time_out')
+                                .eq('student_id', student.id)
+                                .not('time_out', 'is', null)
+                                .order('time_out', { ascending: false })
+                                .limit(20)
+
+                            const todayLastOut = (lastOutRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
+                            dbStatus = todayLastOut.length > 0 ? 'already_checked_out' : 'not_checked_in'
                         }
                     }
                 } catch (dbErr) {
@@ -728,6 +738,26 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">This user is already checked in for today.</span></div>
                         </div>`,
                         confirmButtonText: 'Scan Next',
+                        confirmButtonColor: '#f59e0b',
+                        background: '#1e293b',
+                        color: '#ffffff',
+                        backdrop: `rgba(15,23,42,0.85)`,
+                        padding: '2rem',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                    })
+                } else if (dbStatus === 'already_checked_out') {
+                    await fireResultAlert({
+                        icon: 'warning',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Already checked out today</span>`,
+                        html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                            <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
+                            <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Details:</span> <span style="font-weight: 700; color: #f59e0b;">This user already completed check-out for today.</span></div>
+                        </div>`,
+                        confirmButtonText: 'SCAN NEXT',
                         confirmButtonColor: '#f59e0b',
                         background: '#1e293b',
                         color: '#ffffff',
