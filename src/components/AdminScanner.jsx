@@ -18,6 +18,15 @@ const getTodayManilaDayKey = () => {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 }
 
+const getManilaDayKeyFromIso = (iso) => {
+    if (!iso) return ''
+    try {
+        return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+    } catch {
+        return ''
+    }
+}
+
 // ─── UUID v4 format validation ──────────────────────────────────────────────
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -415,19 +424,30 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
                 setScanModal({ type: 'success', name: student.full_name, message: `✅ Checked In! (${roleLabel})` })
             } else {
-                const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
-                const { data: openEntry, error: findErr } = await supabase
-                    .from(table).select('id').eq('student_id', student.id).is('time_out', null)
-                    .gte('time_in', todayStartUTC)
-                    .lte('time_in', todayEndUTC)
-                    .order('time_in', { ascending: false }).limit(1).single()
-                if (findErr || !openEntry) {
-                    const { data: lastOut } = await supabase
-                        .from(table).select('id, time_out').eq('student_id', student.id)
+                const todayKey = getTodayManilaDayKey()
+                const { data: openRows } = await supabase
+                    .from(table).select('id, time_in').eq('student_id', student.id).is('time_out', null)
+                    .order('time_in', { ascending: false }).limit(20)
+
+                const todayActive = (openRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
+                const staleActive = (openRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) !== todayKey)
+
+                if (todayActive.length === 0 && staleActive.length > 0) {
+                    await supabase.from(table)
+                        .update({ time_out: staleActive[0].time_in })
+                        .in('id', staleActive.map((row) => row.id))
+                        .then(() => { })
+                        .catch(() => { })
+                }
+
+                const openEntry = todayActive[0]
+                if (!openEntry) {
+                    const { data: lastOutRows } = await supabase
+                        .from(table).select('id, time_in, time_out').eq('student_id', student.id)
                         .not('time_out', 'is', null)
-                        .gte('time_in', todayStartUTC)
-                        .lte('time_in', todayEndUTC)
-                        .order('time_out', { ascending: false }).limit(1)
+                        .order('time_out', { ascending: false }).limit(20)
+
+                    const lastOut = (lastOutRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
                     if (lastOut && lastOut.length > 0) {
                         setScanModal({ type: 'warning', name: student.full_name, message: 'Already checked out! No active check-in found.' })
                     } else {
@@ -619,19 +639,29 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             supabase.from('audit_logs').insert([{ student_id: student.id, action: 'SCAN', details: { mode: 'time-in', uuid } }]).catch(() => {})
                         }
                     } else {
-                        const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
+                        const todayKey = getTodayManilaDayKey()
                         let active = null
                         for (let attempt = 0; attempt < 3; attempt += 1) {
                             const { data: activeRows } = await supabase.from(table)
-                                .select('id')
+                                .select('id, time_in')
                                 .eq('student_id', student.id)
                                 .is('time_out', null)
-                                .gte('time_in', todayStartUTC)
-                                .lte('time_in', todayEndUTC)
-                                .limit(1)
+                                .order('time_in', { ascending: false })
+                                .limit(20)
 
-                            if (activeRows && activeRows.length > 0) {
-                                active = activeRows
+                            const todayActive = (activeRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
+                            const staleActive = (activeRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) !== todayKey)
+
+                            if (todayActive.length === 0 && staleActive.length > 0) {
+                                await supabase.from(table)
+                                    .update({ time_out: staleActive[0].time_in })
+                                    .in('id', staleActive.map((row) => row.id))
+                                    .then(() => { })
+                                    .catch(() => { })
+                            }
+
+                            if (todayActive.length > 0) {
+                                active = todayActive
                                 break
                             }
 
@@ -984,16 +1014,26 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: modeForItem, uuid: trimmed } }]).catch(() => { })
                 }
             } else {
-                const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
+                const todayKey = getTodayManilaDayKey()
                 const { data: active } = await supabase.from(table)
-                    .select('id')
+                    .select('id, time_in')
                     .eq('student_id', student.id)
                     .is('time_out', null)
-                    .gte('time_in', todayStartUTC)
-                    .lte('time_in', todayEndUTC)
-                    .limit(1)
-                if (active && active.length > 0) {
-                    const { error: updateErr } = await supabase.from(table).update({ time_out: new Date().toISOString() }).eq('id', active[0].id)
+                    .order('time_in', { ascending: false })
+                    .limit(20)
+
+                const todayActive = (active || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
+                const staleActive = (active || []).filter((row) => getManilaDayKeyFromIso(row.time_in) !== todayKey)
+                if (todayActive.length === 0 && staleActive.length > 0) {
+                    await supabase.from(table)
+                        .update({ time_out: staleActive[0].time_in })
+                        .in('id', staleActive.map((row) => row.id))
+                        .then(() => { })
+                        .catch(() => { })
+                }
+
+                if (todayActive && todayActive.length > 0) {
+                    const { error: updateErr } = await supabase.from(table).update({ time_out: new Date().toISOString() }).eq('id', todayActive[0].id)
                     if (updateErr) {
                         results.push({ item, uuid: trimmed, status: 'error', message: updateErr.message })
                     } else {
@@ -1002,15 +1042,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     }
                 } else {
                     const { data: lastOut } = await supabase.from(table)
-                        .select('id, time_out')
+                        .select('id, time_in, time_out')
                         .eq('student_id', student.id)
                         .not('time_out', 'is', null)
-                        .gte('time_in', todayStartUTC)
-                        .lte('time_in', todayEndUTC)
                         .order('time_out', { ascending: false })
-                        .limit(1)
+                        .limit(20)
 
-                    if (lastOut && lastOut.length > 0) {
+                    const todayLastOut = (lastOut || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
+
+                    if (todayLastOut && todayLastOut.length > 0) {
                         results.push({ item, uuid: trimmed, status: 'already_checked_out' })
                     } else {
                         results.push({ item, uuid: trimmed, status: 'not_checked_in' })
