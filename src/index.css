@@ -30,11 +30,12 @@ html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
   overflow-x: clip;
+  background: #0f172a;
 }
 
 body {
   font-family: var(--font-sans);
-  background: #f8fafc;
+  background: #0f172a;
   color: #0f172a;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
@@ -43,6 +44,12 @@ body {
   /* overflow-x:clip prevents horizontal scroll without blocking vertical scroll */
   overflow-x: clip;
   overscroll-behavior-y: none;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #0f172a;
 }
 
 /* Scoreboard page needs free vertical scroll — !important beats Tailwind preflight */
