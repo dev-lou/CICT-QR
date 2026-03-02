@@ -415,13 +415,19 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
                 setScanModal({ type: 'success', name: student.full_name, message: `✅ Checked In! (${roleLabel})` })
             } else {
+                const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
                 const { data: openEntry, error: findErr } = await supabase
                     .from(table).select('id').eq('student_id', student.id).is('time_out', null)
+                    .gte('time_in', todayStartUTC)
+                    .lte('time_in', todayEndUTC)
                     .order('time_in', { ascending: false }).limit(1).single()
                 if (findErr || !openEntry) {
                     const { data: lastOut } = await supabase
                         .from(table).select('id, time_out').eq('student_id', student.id)
-                        .not('time_out', 'is', null).order('time_out', { ascending: false }).limit(1)
+                        .not('time_out', 'is', null)
+                        .gte('time_in', todayStartUTC)
+                        .lte('time_in', todayEndUTC)
+                        .order('time_out', { ascending: false }).limit(1)
                     if (lastOut && lastOut.length > 0) {
                         setScanModal({ type: 'warning', name: student.full_name, message: 'Already checked out! No active check-in found.' })
                     } else {
@@ -613,12 +619,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                             supabase.from('audit_logs').insert([{ student_id: student.id, action: 'SCAN', details: { mode: 'time-in', uuid } }]).catch(() => {})
                         }
                     } else {
+                        const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
                         let active = null
                         for (let attempt = 0; attempt < 3; attempt += 1) {
                             const { data: activeRows } = await supabase.from(table)
                                 .select('id')
                                 .eq('student_id', student.id)
                                 .is('time_out', null)
+                                .gte('time_in', todayStartUTC)
+                                .lte('time_in', todayEndUTC)
                                 .limit(1)
 
                             if (activeRows && activeRows.length > 0) {
@@ -975,7 +984,14 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: modeForItem, uuid: trimmed } }]).catch(() => { })
                 }
             } else {
-                const { data: active } = await supabase.from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
+                const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
+                const { data: active } = await supabase.from(table)
+                    .select('id')
+                    .eq('student_id', student.id)
+                    .is('time_out', null)
+                    .gte('time_in', todayStartUTC)
+                    .lte('time_in', todayEndUTC)
+                    .limit(1)
                 if (active && active.length > 0) {
                     const { error: updateErr } = await supabase.from(table).update({ time_out: new Date().toISOString() }).eq('id', active[0].id)
                     if (updateErr) {
@@ -989,6 +1005,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         .select('id, time_out')
                         .eq('student_id', student.id)
                         .not('time_out', 'is', null)
+                        .gte('time_in', todayStartUTC)
+                        .lte('time_in', todayEndUTC)
                         .order('time_out', { ascending: false })
                         .limit(1)
 
