@@ -393,81 +393,6 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     }, [fetchStats])
 
     // ─── Scanner ─────────────────────────────────────────────────────────────────
-    // original scan handler, kept around for reference (not used when middle tier active)
-    const handleScanImmediate = useCallback(async (decodedText) => {
-        const scannedUuid = decodedText.trim()
-        try {
-            const { data: student, error: studentErr } = await supabase
-                .from('students').select('id, full_name, uuid, role').eq('uuid', scannedUuid).single()
-            if (studentErr || !student) {
-                setScanModal({ type: 'error', name: '', message: 'Student not found.' })
-                return
-            }
-
-            // Route to correct logbook table based on role
-            const isStaff = student.role === 'leader' || student.role === 'facilitator' || student.role === 'executive' || student.role === 'officer'
-            const table = isStaff ? 'staff_logbook' : 'logbook'
-            const roleLabel = student.role === 'leader' ? '⭐ Leader' : student.role === 'facilitator' ? '🎯 Facilitator' : student.role === 'executive' ? '👔 Executive' : student.role === 'officer' ? '🏛️ Officer' : '🎓 Student'
-
-            if (mode === 'time-in') {
-                const { data: existing } = await supabase
-                    .from(table).select('id').eq('student_id', student.id).is('time_out', null).limit(1)
-                if (existing && existing.length > 0) {
-                    setScanModal({ type: 'warning', name: student.full_name, message: `Already checked in! (${roleLabel}) Please use Time-Out mode.` })
-                    return
-                }
-                const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
-                if (insertErr) throw insertErr
-
-                // Play success beep
-                playBeep();
-
-                setScanModal({ type: 'success', name: student.full_name, message: `✅ Checked In! (${roleLabel})` })
-            } else {
-                const todayKey = getTodayManilaDayKey()
-                const { data: openRows } = await supabase
-                    .from(table).select('id, time_in').eq('student_id', student.id).is('time_out', null)
-                    .order('time_in', { ascending: false }).limit(20)
-
-                const todayActive = (openRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
-                const staleActive = (openRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) !== todayKey)
-
-                if (todayActive.length === 0 && staleActive.length > 0) {
-                    await supabase.from(table)
-                        .update({ time_out: staleActive[0].time_in })
-                        .in('id', staleActive.map((row) => row.id))
-                        .then(() => { })
-                        .catch(() => { })
-                }
-
-                const openEntry = todayActive[0]
-                if (!openEntry) {
-                    const { data: lastOutRows } = await supabase
-                        .from(table).select('id, time_in, time_out').eq('student_id', student.id)
-                        .not('time_out', 'is', null)
-                        .order('time_out', { ascending: false }).limit(20)
-
-                    const lastOut = (lastOutRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
-                    if (lastOut && lastOut.length > 0) {
-                        setScanModal({ type: 'warning', name: student.full_name, message: 'Already checked out! No active check-in found.' })
-                    } else {
-                        setScanModal({ type: 'error', name: student.full_name, message: 'No active check-in found for this person.' })
-                    }
-                    return
-                }
-                const { error: updateErr } = await supabase
-                    .from(table).update({ time_out: new Date().toISOString() }).eq('id', openEntry.id)
-                if (updateErr) throw updateErr
-
-                // Play success beep
-                playBeep();
-
-                setScanModal({ type: 'info', name: student.full_name, message: `👋 Checked Out! (${roleLabel})` })
-            }
-        } catch (err) {
-            setScanModal({ type: 'error', name: '', message: err.message || 'An error occurred.' })
-        }
-    }, [mode])
 
     const fireScanAlert = useCallback((options) => {
         return Swal.fire({
@@ -481,15 +406,41 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         })
     }, [playBeep])
 
+    const getAdminHeaders = useCallback(() => {
+        try {
+            const raw = localStorage.getItem('admin_session')
+            if (!raw) return null
+            const session = JSON.parse(raw)
+            if (!session?.email || !session?.id) return null
+            return {
+                'x-admin-email': String(session.email).trim().toLowerCase(),
+                'x-admin-id': String(session.id)
+            }
+        } catch {
+            return null
+        }
+    }, [])
+
     const sendBatchToScanApi = useCallback(async (entries) => {
         try {
             if (!Array.isArray(entries) || entries.length === 0) return []
 
+            const adminHeaders = getAdminHeaders()
+            if (!adminHeaders) {
+                console.warn('[ScanAPI] No admin session found in localStorage')
+                return null
+            }
+
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 15000)
+
             const response = await fetch('/api/scan', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ entries })
+                headers: { 'Content-Type': 'application/json', ...adminHeaders },
+                body: JSON.stringify({ entries }),
+                signal: controller.signal
             })
+            clearTimeout(timeoutId)
 
             if (!response.ok) {
                 const errText = await response.text().catch(() => '')
@@ -504,10 +455,14 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             }
             return body.results
         } catch (err) {
-            console.warn('[ScanAPI] fetch failed:', err?.message || err)
+            if (err?.name === 'AbortError') {
+                console.warn('[ScanAPI] request timed out (15s)')
+            } else {
+                console.warn('[ScanAPI] fetch failed:', err?.message || err)
+            }
             return null
         }
-    }, [])
+    }, [getAdminHeaders])
 
     const queueScanForRetry = useCallback((uuid, scanMode, name = 'Pending verification', failureMeta = null) => {
         const alreadyQueued = scanQueueRef.current.some((entry) => {
@@ -1103,8 +1058,29 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
         window.addEventListener('beforeunload', saveOnUnload)
 
+        // Periodic queue persistence every 5 seconds — protects against crash/force-close
+        const periodicSaveId = setInterval(() => {
+            try {
+                if (scanQueueRef.current.length > 0) {
+                    localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+                }
+            } catch { /* localStorage full or unavailable */ }
+        }, 5000)
+
+        // Also persist on visibility change (user switches tab/locks phone)
+        const saveOnHide = () => {
+            if (document.visibilityState === 'hidden') {
+                try {
+                    localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+                } catch { }
+            }
+        }
+        document.addEventListener('visibilitychange', saveOnHide)
+
         return () => {
             window.removeEventListener('beforeunload', saveOnUnload)
+            document.removeEventListener('visibilitychange', saveOnHide)
+            clearInterval(periodicSaveId)
         }
     }, [])
 
