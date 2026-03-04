@@ -323,17 +323,14 @@ export default function AdminAttendanceFix() {
                 const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(role)
                 const table = isStaff ? 'staff_logbook' : 'logbook'
 
-                const { data: inserted, error: insertErr } = await supabase
-                    .from(table)
-                    .insert({
-                        student_id: row.student_id,
-                        time_in: timeInPayload,
-                        time_out: timeOutPayload
-                    })
-                    .select('id, student_id, time_in, time_out')
-                    .single()
-
-                if (insertErr) throw insertErr
+                const resp = await fetch('/api/attendance-fix', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'insert', table, student_id: row.student_id, time_in: timeInPayload, time_out: timeOutPayload })
+                })
+                const result = await resp.json()
+                if (!resp.ok) throw new Error(result.error || 'Insert failed')
+                const inserted = result.data
 
                 const insertedRow = {
                     ...(inserted || {}),
@@ -369,12 +366,13 @@ export default function AdminAttendanceFix() {
                 return
             }
 
-            const { error } = await supabase
-                .from(row.source)
-                .update({ time_in: timeInPayload, time_out: timeOutPayload })
-                .eq('id', row.id)
-
-            if (error) throw error
+            const resp = await fetch('/api/attendance-fix', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'update', table: row.source, id: row.id, time_in: timeInPayload, time_out: timeOutPayload })
+            })
+            const result = await resp.json()
+            if (!resp.ok) throw new Error(result.error || 'Update failed')
 
             setRows((prev) => prev.map((item) => {
                 if (item.id === row.id && item.source === row.source) {
@@ -432,12 +430,13 @@ export default function AdminAttendanceFix() {
 
         setDeletingId(key)
         try {
-            const { error } = await supabase
-                .from(row.source)
-                .delete()
-                .eq('id', row.id)
-
-            if (error) throw error
+            const resp = await fetch('/api/attendance-fix', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete', table: row.source, id: row.id })
+            })
+            const result = await resp.json()
+            if (!resp.ok) throw new Error(result.error || 'Delete failed')
 
             setRows((prev) => prev.filter((item) => !(item.source === row.source && item.id === row.id)))
             setEditValues((prev) => {
