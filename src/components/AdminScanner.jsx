@@ -27,6 +27,12 @@ const getManilaDayKeyFromIso = (iso) => {
     }
 }
 
+const isNoRowsError = (error) => {
+    const code = String(error?.code || '').toUpperCase()
+    const message = String(error?.message || '').toLowerCase()
+    return code === 'PGRST116' || message.includes('0 rows') || message.includes('no rows') || message.includes('contains 0 rows')
+}
+
 // ─── UUID v4 format validation ──────────────────────────────────────────────
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -69,6 +75,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const [queueSize, setQueueSize] = useState(0)
     const [queuedItems, setQueuedItems] = useState([]) // snapshot for UI
     const [lastSyncReport, setLastSyncReport] = useState(null)
+    const [isQueueSyncing, setIsQueueSyncing] = useState(false)
+    const queueSyncInProgressRef = useRef(false)
     const queueFlushInterval = useRef(null)
     const saveStartedAtRef = useRef(0)
     const recentScansRef = useRef({}) // debounce tracking: { [uuid]: timestamp }
@@ -269,17 +277,43 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
     }, [])
 
+    const fetchAllAttendanceRows = useCallback(async (tableName) => {
+        if (!supabase) return []
+
+        const pageSize = 1000
+        let from = 0
+        let done = false
+        const collected = []
+
+        while (!done) {
+            const to = from + pageSize - 1
+            const { data, error } = await supabase
+                .from(tableName)
+                .select('id, student_id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
+                .order('time_in', { ascending: true })
+                .range(from, to)
+
+            if (error) throw error
+
+            const batch = data || []
+            collected.push(...batch)
+
+            if (batch.length < pageSize) {
+                done = true
+            } else {
+                from += pageSize
+            }
+        }
+
+        return collected
+    }, [])
+
     // ─── Student Logbook ─────────────────────────────────────────────────────────
     const fetchLogbook = useCallback(async () => {
         if (!supabase) return
         setLogLoading(true)
         try {
-            const { data, error } = await supabase
-                .from('logbook')
-                .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
-                .order('time_in', { ascending: true })
-
-            if (error) throw error
+            const data = await fetchAllAttendanceRows('logbook')
             setLogbook(data || [])
             if (initialLogJump && data && data.length > pageSize) {
                 const lp = Math.ceil(data.length / pageSize)
@@ -294,7 +328,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         } finally {
             setLogLoading(false)
         }
-    }, [])
+    }, [fetchAllAttendanceRows, initialLogJump])
 
     useEffect(() => {
         fetchLogbook()
@@ -317,15 +351,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             const backendConnected = await hasBackendConnection()
             if (!backendConnected) throw new Error('No backend connection. Please reconnect and retry.')
 
-            const { data, error } = await Promise.race([
-                supabase
-                    .from('staff_logbook')
-                    .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
-                    .order('time_in', { ascending: true }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out. Tap REFRESH to retry.')), 12000))
-            ])
-
-            if (error) throw error
+            const data = await fetchAllAttendanceRows('staff_logbook')
             setStaffLogbook(data || [])
             staffFetchedRef.current = true
             if (initialStaffJump && data && data.length > pageSize) {
@@ -335,38 +361,12 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             }
         } catch (err) {
             const message = err?.message || 'Failed to load staff logbook.'
-            const isTimeout = String(message).toLowerCase().includes('timed out')
-
-            if (isTimeout) {
-                try {
-                    const { data: fallbackData, error: fallbackError } = await supabase
-                        .from('staff_logbook')
-                        .select('id, time_in, time_out, students!inner(id, full_name, team_name, uuid, role)')
-                        .order('time_in', { ascending: false })
-                        .limit(500)
-
-                    if (fallbackError) throw fallbackError
-                    const normalized = [...(fallbackData || [])].reverse()
-                    setStaffLogbook(normalized)
-                    staffFetchedRef.current = true
-                    if (initialStaffJump && normalized.length > pageSize) {
-                        const lp = Math.ceil(normalized.length / pageSize)
-                        setStaffPage(lp)
-                        setInitialStaffJump(false)
-                    }
-                    setStaffLogError('Loaded recent staff records due to slow connection. Tap REFRESH to retry full data.')
-                    return
-                } catch (fallbackErr) {
-                    console.error('Fallback staff fetch failed:', fallbackErr?.message || fallbackErr)
-                }
-            }
-
             console.error('Failed to load staff logbook:', message)
             setStaffLogError(message)
         } finally {
             setStaffLogLoading(false)
         }
-    }, [hasBackendConnection, initialStaffJump])
+    }, [fetchAllAttendanceRows, hasBackendConnection, initialStaffJump])
 
     useEffect(() => { setStaffPage(1) }, [staffLogFilter, staffDayFilter, activeTab, staffSearch])
     // Fetch staff logbook when staff tab becomes active (lazy load instead of on mount)
@@ -481,6 +481,50 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         })
     }, [playBeep])
 
+    const queueScanForRetry = useCallback((uuid, scanMode, name = 'Pending verification', failureMeta = null) => {
+        const alreadyQueued = scanQueueRef.current.some((entry) => {
+            const queuedUuid = typeof entry === 'string' ? entry.trim() : (entry?.uuid || '').trim()
+            const queuedMode = typeof entry === 'string' ? scanMode : (entry?.mode || scanMode)
+            return queuedUuid === uuid && queuedMode === scanMode
+        })
+
+        if (!alreadyQueued) {
+            scanQueueRef.current.push({
+                uuid,
+                name,
+                mode: scanMode,
+                attempts: 0,
+                queued_at: new Date().toISOString(),
+                failure_stage: failureMeta?.stage || 'network',
+                failure_reason: failureMeta?.reason || 'temporary_issue',
+                last_error: failureMeta?.error || ''
+            })
+            setQueueSize(scanQueueRef.current.length)
+            setQueuedItems([...scanQueueRef.current])
+            localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+        } else if (failureMeta) {
+            let changed = false
+            scanQueueRef.current = scanQueueRef.current.map((entry) => {
+                if (typeof entry === 'string') return entry
+                if ((entry?.uuid || '').trim() !== uuid || (entry?.mode || scanMode) !== scanMode) return entry
+                changed = true
+                return {
+                    ...entry,
+                    failure_stage: failureMeta.stage || entry.failure_stage || 'network',
+                    failure_reason: failureMeta.reason || entry.failure_reason || 'temporary_issue',
+                    last_error: failureMeta.error || entry.last_error || ''
+                }
+            })
+
+            if (changed) {
+                setQueuedItems([...scanQueueRef.current])
+                localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+            }
+        }
+
+        return alreadyQueued
+    }, [])
+
     // push decoded text into a queue for later processing; immediate blocking modal & broadcast
     const handleScan = useCallback(async (decodedText) => {
         // Prevent re-entry if admin hasn't clicked OK or if it's processing
@@ -531,23 +575,11 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
         // If backend is unreachable, queue once (dedupe by uuid+mode) and show offline modal.
         if (!backendConnected) {
-            const alreadyQueued = scanQueueRef.current.some((entry) => {
-                const queuedUuid = typeof entry === 'string' ? entry.trim() : (entry?.uuid || '').trim()
-                const queuedMode = typeof entry === 'string' ? mode : (entry?.mode || mode)
-                return queuedUuid === uuid && queuedMode === mode
+            const alreadyQueued = queueScanForRetry(uuid, mode, 'Pending verification', {
+                stage: 'network',
+                reason: 'offline_capture',
+                error: 'Backend unreachable while scanning.'
             })
-
-            if (!alreadyQueued) {
-                scanQueueRef.current.push({
-                    uuid,
-                    name: 'Pending verification',
-                    mode,
-                    queued_at: new Date().toISOString()
-                })
-                setQueueSize(scanQueueRef.current.length)
-                setQueuedItems([...scanQueueRef.current])
-                localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
-            }
 
             await fireResultAlert({
                 icon: alreadyQueued ? 'warning' : 'info',
@@ -574,7 +606,55 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         // 3. Query student details for the modal and broadcast
         try {
             const { data: student, error: studentErr } = await supabase.from('students').select('id, full_name, team_name, role').eq('uuid', uuid).single()
-            if (studentErr || !student) {
+            if (studentErr) {
+                if (isNoRowsError(studentErr)) {
+                    await fireResultAlert({
+                        icon: 'error',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Participant not found</span>`,
+                        html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                        <div>Please verify that this QR is registered in the attendance system.</div>
+                    </div>`,
+                        confirmButtonText: 'SCAN NEXT',
+                        confirmButtonColor: '#ef4444',
+                        background: '#1e293b',
+                        color: '#ffffff',
+                        backdrop: `rgba(15,23,42,0.85)`,
+                        padding: '2rem',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                    })
+                    processingRef.current = false
+                    return
+                }
+
+                const alreadyQueued = queueScanForRetry(uuid, mode, 'Pending verification', {
+                    stage: 'lookup',
+                    reason: 'lookup_query_failed',
+                    error: studentErr?.message || 'Student lookup failed.'
+                })
+                await fireResultAlert({
+                    icon: alreadyQueued ? 'warning' : 'info',
+                    title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${alreadyQueued ? 'Scan already queued for retry' : 'Temporary lookup issue — queued'}</span>`,
+                    html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
+                        <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #f59e0b;">Saved to retry queue</span></div>
+                        <div>We could not verify this scan right now. Use <b>Sync Now</b> when stable.</div>
+                    </div>`,
+                    confirmButtonText: 'SCAN NEXT',
+                    confirmButtonColor: '#f59e0b',
+                    background: '#1e293b',
+                    color: '#ffffff',
+                    backdrop: `rgba(15,23,42,0.85)`,
+                    padding: '2rem',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
+                })
+                processingRef.current = false
+                return
+            }
+
+            if (!student) {
                 await fireResultAlert({
                     icon: 'error',
                     title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Participant not found</span>`,
@@ -788,18 +868,22 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                         customClass: { popup: 'luxury-swal-popup', confirmButton: 'luxury-swal-btn' }
                     })
                 } else if (dbStatus === 'error') {
-                    // DB failed while online — show error, do NOT queue to offline
+                    const alreadyQueued = queueScanForRetry(uuid, mode, student.full_name || 'Pending verification', {
+                        stage: 'save',
+                        reason: 'database_write_failed',
+                        error: 'Attendance save failed while online.'
+                    })
                     await fireResultAlert({
-                        icon: 'error',
-                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Save failed — try again</span>`,
+                        icon: alreadyQueued ? 'warning' : 'info',
+                        title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${alreadyQueued ? 'Scan already queued for retry' : 'Save failed — queued for retry'}</span>`,
                         html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
                             <div style="font-size: 1rem; font-weight: 800; color: #C9A84C; margin-bottom: 0.25rem;">${safeName}</div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Team:</span> <span style="font-weight: 700; color: #ffffff;">${teamLabel}</span></div>
                             <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Role:</span> <span style="font-weight: 700; color: #ffffff;">${roleLabel}</span></div>
-                            <div><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #ef4444;">Database error — scan this QR again.</span></div>
+                            <div><span style="color: rgba(255,255,255,0.55);">Status:</span> <span style="font-weight: 700; color: #f59e0b;">Database error — saved to retry queue.</span></div>
                         </div>`,
                         confirmButtonText: 'SCAN NEXT',
-                        confirmButtonColor: '#ef4444',
+                        confirmButtonColor: '#f59e0b',
                         background: '#1e293b',
                         color: '#ffffff',
                         backdrop: `rgba(15,23,42,0.85)`,
@@ -890,15 +974,20 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             }
 
             if (!recovered) {
+                const alreadyQueued = queueScanForRetry(uuid, mode, 'Pending verification', {
+                    stage: 'processing',
+                    reason: 'unexpected_processing_error',
+                    error: e?.message || 'Unexpected processing error.'
+                })
                 await fireResultAlert({
-                    icon: 'error',
-                    title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">Unable to process QR code</span>`,
+                    icon: alreadyQueued ? 'warning' : 'info',
+                    title: `<span style="color: white; font-weight: 800; font-size: 1.1rem;">${alreadyQueued ? 'Scan already queued for retry' : 'Unable to process — queued'}</span>`,
                     html: `<div style="color: rgba(255,255,255,0.86); font-size: 0.95rem; margin-top: 0.4rem; line-height: 1.5; text-align: left;">
-                        <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Reason:</span> <span style="font-weight: 700; color: #ef4444;">A processing error occurred.</span></div>
-                        <div>Please scan again. If it repeats, check internet stability.</div>
+                        <div style="margin-bottom: 0.2rem;"><span style="color: rgba(255,255,255,0.55);">Reason:</span> <span style="font-weight: 700; color: #f59e0b;">A processing error occurred.</span></div>
+                        <div>This scan was saved to retry queue. Use <b>Sync Now</b> when stable.</div>
                     </div>`,
                     confirmButtonText: 'SCAN NEXT',
-                    confirmButtonColor: '#ef4444',
+                    confirmButtonColor: '#f59e0b',
                     background: '#1e293b',
                     color: '#ffffff',
                     backdrop: `rgba(15,23,42,0.85)`,
@@ -914,7 +1003,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         setIsSavingScan(false)
         saveStartedAtRef.current = 0
         processingRef.current = false
-    }, [fireScanAlert, mode, eventMode, getManilaDayBoundsUTC, hasBackendConnection])
+    }, [fireScanAlert, mode, eventMode, getManilaDayBoundsUTC, hasBackendConnection, queueScanForRetry])
 
     // SAFETY NET: If handleScan somehow fails to show Swal and processingRef stays locked,
     // auto‑unlock after 15s so scanning isn't permanently blocked
@@ -981,111 +1070,142 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     const processScanBatch = async (batch, currentMode) => {
         const results = []
         for (const item of batch) {
-            // Backward compatibility for generic string arrays from old caches
-            const rawUuid = typeof item === 'string' ? item : item?.uuid
-            const trimmed = rawUuid ? rawUuid.trim() : ''
-            const modeForItem = typeof item === 'string' ? currentMode : (item?.mode || currentMode)
-            if (!trimmed) continue
+            try {
+                const rawUuid = typeof item === 'string' ? item : item?.uuid
+                const trimmed = rawUuid ? String(rawUuid).trim() : ''
+                const modeForItem = typeof item === 'string' ? currentMode : (item?.mode || currentMode)
 
-            const { data: student } = await supabase.from('students').select('id, full_name, role').eq('uuid', trimmed).single()
-            if (!student) {
-                results.push({ item, uuid: trimmed, status: 'missing' })
-                continue
-            }
-
-            const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
-            const table = isStaff ? 'staff_logbook' : 'logbook'
-
-            if (modeForItem === 'time-in') {
-                const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
-
-                // 1. Check for ANY active session (time_out is null)
-                const { data: existing } = await supabase.from(table).select('id, time_in').eq('student_id', student.id).is('time_out', null)
-                if (existing && existing.length > 0) {
-                    // Separate today's active sessions from stale ones (previous days)
-                    const todayActive = existing.filter(e => e.time_in >= todayStartUTC && e.time_in <= todayEndUTC)
-                    const staleActive = existing.filter(e => e.time_in < todayStartUTC)
-
-                    // Auto-close stale sessions from previous days so they don't block today
-                    if (staleActive.length > 0) {
-                        const staleIds = staleActive.map(e => e.id)
-                        await supabase.from(table)
-                            .update({ time_out: staleActive[0].time_in })
-                            .in('id', staleIds)
-                            .then(() => {})
-                            .catch(() => {})
-                    }
-
-                    // Only block if there's a REAL active session from TODAY
-                    if (todayActive.length > 0) {
-                        results.push({ item, uuid: trimmed, status: 'duplicate' })
-                        continue
-                    }
-                }
-
-                // 2. Check for Same-Day Scanning (checked in at all today, even if checked out)
-                const { data: todayRecords } = await supabase.from(table)
-                    .select('id')
-                    .eq('student_id', student.id)
-                    .gte('time_in', todayStartUTC)
-                    .lte('time_in', todayEndUTC)
-                    .limit(1)
-
-                if (todayRecords && todayRecords.length > 0) {
-                    results.push({ item, uuid: trimmed, status: 'already_scanned_today' })
+                if (!trimmed) {
+                    results.push({ item, uuid: '', status: 'invalid_item' })
                     continue
                 }
 
-                const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
-                if (insertErr) {
-                    results.push({ item, uuid: trimmed, status: 'error', message: insertErr.message })
-                } else {
-                    results.push({ item, uuid: trimmed, status: 'ok' })
-                    await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: modeForItem, uuid: trimmed } }]).catch(() => { })
-                }
-            } else {
-                const todayKey = getTodayManilaDayKey()
-                const { data: active } = await supabase.from(table)
-                    .select('id, time_in')
-                    .eq('student_id', student.id)
-                    .is('time_out', null)
-                    .order('time_in', { ascending: false })
-                    .limit(20)
+                const { data: student, error: studentErr } = await supabase
+                    .from('students')
+                    .select('id, full_name, role')
+                    .eq('uuid', trimmed)
+                    .single()
 
-                const todayActive = (active || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
-                const staleActive = (active || []).filter((row) => getManilaDayKeyFromIso(row.time_in) !== todayKey)
-                if (todayActive.length === 0 && staleActive.length > 0) {
-                    await supabase.from(table)
-                        .update({ time_out: staleActive[0].time_in })
-                        .in('id', staleActive.map((row) => row.id))
-                        .then(() => { })
-                        .catch(() => { })
+                if (studentErr) {
+                    const message = String(studentErr.message || '').toLowerCase()
+                    if (message.includes('0 rows') || message.includes('no rows')) {
+                        results.push({ item, uuid: trimmed, status: 'missing' })
+                    } else {
+                        results.push({ item, uuid: trimmed, status: 'error', message: studentErr.message })
+                    }
+                    continue
                 }
 
-                if (todayActive && todayActive.length > 0) {
-                    const { error: updateErr } = await supabase.from(table).update({ time_out: new Date().toISOString() }).eq('id', todayActive[0].id)
-                    if (updateErr) {
-                        results.push({ item, uuid: trimmed, status: 'error', message: updateErr.message })
+                if (!student) {
+                    results.push({ item, uuid: trimmed, status: 'missing' })
+                    continue
+                }
+
+                const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
+                const table = isStaff ? 'staff_logbook' : 'logbook'
+
+                if (modeForItem === 'time-in') {
+                    const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
+
+                    const { data: existing, error: existingErr } = await supabase
+                        .from(table)
+                        .select('id, time_in')
+                        .eq('student_id', student.id)
+                        .is('time_out', null)
+                    if (existingErr) throw existingErr
+
+                    if (existing && existing.length > 0) {
+                        const todayActive = existing.filter((entry) => entry.time_in >= todayStartUTC && entry.time_in <= todayEndUTC)
+                        const staleActive = existing.filter((entry) => entry.time_in < todayStartUTC)
+
+                        if (staleActive.length > 0) {
+                            const staleIds = staleActive.map((entry) => entry.id)
+                            await supabase.from(table)
+                                .update({ time_out: staleActive[0].time_in })
+                                .in('id', staleIds)
+                                .then(() => { })
+                                .catch(() => { })
+                        }
+
+                        if (todayActive.length > 0) {
+                            results.push({ item, uuid: trimmed, status: 'duplicate' })
+                            continue
+                        }
+                    }
+
+                    const { data: todayRecords, error: todayErr } = await supabase.from(table)
+                        .select('id')
+                        .eq('student_id', student.id)
+                        .gte('time_in', todayStartUTC)
+                        .lte('time_in', todayEndUTC)
+                        .limit(1)
+                    if (todayErr) throw todayErr
+
+                    if (todayRecords && todayRecords.length > 0) {
+                        results.push({ item, uuid: trimmed, status: 'already_scanned_today' })
+                        continue
+                    }
+
+                    const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
+                    if (insertErr) {
+                        results.push({ item, uuid: trimmed, status: 'error', message: insertErr.message })
                     } else {
                         results.push({ item, uuid: trimmed, status: 'ok' })
-                        await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN_OUT', details: { uuid: trimmed } }]).catch(() => { })
+                        await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: modeForItem, uuid: trimmed } }]).catch(() => { })
                     }
                 } else {
-                    const { data: lastOut } = await supabase.from(table)
-                        .select('id, time_in, time_out')
+                    const todayKey = getTodayManilaDayKey()
+                    const { data: active, error: activeErr } = await supabase.from(table)
+                        .select('id, time_in')
                         .eq('student_id', student.id)
-                        .not('time_out', 'is', null)
-                        .order('time_out', { ascending: false })
+                        .is('time_out', null)
+                        .order('time_in', { ascending: false })
                         .limit(20)
+                    if (activeErr) throw activeErr
 
-                    const todayLastOut = (lastOut || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
+                    const todayActive = (active || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
+                    const staleActive = (active || []).filter((row) => getManilaDayKeyFromIso(row.time_in) !== todayKey)
+                    if (todayActive.length === 0 && staleActive.length > 0) {
+                        await supabase.from(table)
+                            .update({ time_out: staleActive[0].time_in })
+                            .in('id', staleActive.map((row) => row.id))
+                            .then(() => { })
+                            .catch(() => { })
+                    }
 
-                    if (todayLastOut && todayLastOut.length > 0) {
-                        results.push({ item, uuid: trimmed, status: 'already_checked_out' })
+                    if (todayActive && todayActive.length > 0) {
+                        const { error: updateErr } = await supabase.from(table).update({ time_out: new Date().toISOString() }).eq('id', todayActive[0].id)
+                        if (updateErr) {
+                            results.push({ item, uuid: trimmed, status: 'error', message: updateErr.message })
+                        } else {
+                            results.push({ item, uuid: trimmed, status: 'ok' })
+                            await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN_OUT', details: { uuid: trimmed } }]).catch(() => { })
+                        }
                     } else {
-                        results.push({ item, uuid: trimmed, status: 'not_checked_in' })
+                        const { data: lastOut, error: lastOutErr } = await supabase.from(table)
+                            .select('id, time_in, time_out')
+                            .eq('student_id', student.id)
+                            .not('time_out', 'is', null)
+                            .order('time_out', { ascending: false })
+                            .limit(20)
+                        if (lastOutErr) throw lastOutErr
+
+                        const todayLastOut = (lastOut || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
+
+                        if (todayLastOut && todayLastOut.length > 0) {
+                            results.push({ item, uuid: trimmed, status: 'already_checked_out' })
+                        } else {
+                            results.push({ item, uuid: trimmed, status: 'not_checked_in' })
+                        }
                     }
                 }
+            } catch (batchErr) {
+                results.push({
+                    item,
+                    uuid: (typeof item === 'string' ? item : item?.uuid) || '',
+                    status: 'error',
+                    message: batchErr?.message || 'Batch processing error'
+                })
             }
         }
         return results
@@ -1095,7 +1215,43 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     useEffect(() => {
         const saved = localStorage.getItem('scanQueue')
         if (saved) {
-            try { scanQueueRef.current = JSON.parse(saved) || [] } catch { };
+            try {
+                const parsed = JSON.parse(saved) || []
+                const normalized = (Array.isArray(parsed) ? parsed : []).map((entry) => {
+                    if (typeof entry === 'string') {
+                        const trimmed = entry.trim()
+                        if (!trimmed) return null
+                        return {
+                            uuid: trimmed,
+                            mode: 'time-in',
+                            name: 'Pending verification',
+                            attempts: 0,
+                            queued_at: null,
+                            failure_stage: 'network',
+                            failure_reason: 'legacy_queue_item',
+                            last_error: ''
+                        }
+                    }
+
+                    const trimmed = (entry?.uuid || '').trim()
+                    if (!trimmed) return null
+                    const attempts = Number.isFinite(Number(entry?.attempts)) ? Number(entry.attempts) : 0
+                    return {
+                        ...entry,
+                        uuid: trimmed,
+                        mode: entry?.mode || 'time-in',
+                        attempts,
+                        failure_stage: entry?.failure_stage || 'network',
+                        failure_reason: entry?.failure_reason || 'temporary_issue',
+                        last_error: entry?.last_error || ''
+                    }
+                }).filter(Boolean)
+
+                scanQueueRef.current = normalized
+                localStorage.setItem('scanQueue', JSON.stringify(normalized))
+            } catch {
+                scanQueueRef.current = []
+            }
             setQueueSize(scanQueueRef.current.length)
             setQueuedItems([...scanQueueRef.current])
         }
@@ -1108,30 +1264,52 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         return () => {
             window.removeEventListener('beforeunload', saveOnUnload)
         }
-    }, [mode])
+    }, [])
 
     // manual flush action (invoked by button)
     const flushQueue = useCallback(async () => {
-        if (scanQueueRef.current.length === 0) {
-            Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Queue is already synced.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
+        if (queueSyncInProgressRef.current) {
+            Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Queue sync already in progress.', showConfirmButton: false, timer: 1800, background: '#1e293b', color: '#fff' })
             return
         }
-        const backendConnected = await hasBackendConnection()
-        if (!backendConnected) {
-            Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Still offline. Cannot sync yet.', showConfirmButton: false, timer: 2200, background: '#1e293b', color: '#fff' })
-            return
-        }
-        const batch = scanQueueRef.current.splice(0)
-        setQueueSize(scanQueueRef.current.length)
-        setQueuedItems([...scanQueueRef.current])
-        localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+
+        queueSyncInProgressRef.current = true
+        setIsQueueSyncing(true)
+        let batch = []
+
         try {
+            if (scanQueueRef.current.length === 0) {
+                Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Queue is already synced.', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
+                return
+            }
+
+            const backendConnected = await hasBackendConnection()
+            if (!backendConnected) {
+                Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Still offline. Cannot sync yet.', showConfirmButton: false, timer: 2200, background: '#1e293b', color: '#fff' })
+                return
+            }
+
+            batch = scanQueueRef.current.splice(0)
+            setQueueSize(scanQueueRef.current.length)
+            setQueuedItems([...scanQueueRef.current])
+            localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
+
             const results = await processScanBatch(batch, mode)
 
-            const retryableStatuses = new Set(['error', 'not_checked_in'])
-            const retryItems = results
-                .filter((result) => retryableStatuses.has(result.status))
-                .map((result) => (typeof result.item === 'string' ? { uuid: result.uuid } : result.item))
+            const maxRetryAttempts = 3
+            const retryCandidates = results
+                .filter((result) => result.status === 'error')
+                .map((result) => {
+                    const baseItem = typeof result.item === 'string'
+                        ? { uuid: result.uuid, mode }
+                        : { ...(result.item || {}), uuid: result.uuid, mode: result.item?.mode || mode }
+
+                    const attempts = Number.isFinite(Number(baseItem.attempts)) ? Number(baseItem.attempts) : 0
+                    return { ...baseItem, attempts: attempts + 1 }
+                })
+
+            const retryItems = retryCandidates.filter((item) => item.attempts < maxRetryAttempts)
+            const droppedRetryExhaustedCount = retryCandidates.length - retryItems.length
 
             const okCount = results.filter((result) => result.status === 'ok').length
             const duplicateCount = results.filter((result) => result.status === 'duplicate').length
@@ -1139,7 +1317,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             const alreadyOutCount = results.filter((result) => result.status === 'already_checked_out').length
             const alreadyCount = duplicateCount + alreadyTodayCount + alreadyOutCount
             const missingCount = results.filter((result) => result.status === 'missing').length
-            const retryNotCheckedInCount = results.filter((result) => result.status === 'not_checked_in').length
+            const invalidCount = results.filter((result) => result.status === 'invalid_item').length
+            const droppedNotCheckedInCount = results.filter((result) => result.status === 'not_checked_in').length
             const retryErrorCount = results.filter((result) => result.status === 'error').length
 
             setLastSyncReport({
@@ -1147,12 +1326,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 total: batch.length,
                 synced: okCount,
                 retry: retryItems.length,
-                retryNotCheckedIn: retryNotCheckedInCount,
+                retryNotCheckedIn: 0,
                 retryError: retryErrorCount,
+                droppedNotCheckedIn: droppedNotCheckedInCount,
+                droppedRetryExhausted: droppedRetryExhaustedCount,
                 duplicate: duplicateCount,
                 alreadyToday: alreadyTodayCount,
                 alreadyCheckedOut: alreadyOutCount,
                 missing: missingCount,
+                invalid: invalidCount,
                 failed: false
             })
 
@@ -1166,35 +1348,44 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                     toast: true,
                     position: 'top-end',
                     icon: 'warning',
-                    title: `${okCount} synced, ${retryItems.length} kept for retry${alreadyCount > 0 ? `, ${alreadyCount} already-recorded` : ''}${missingCount > 0 ? `, ${missingCount} missing` : ''}.`,
+                    title: `${okCount} synced, ${retryItems.length} kept for retry${droppedNotCheckedInCount > 0 ? `, ${droppedNotCheckedInCount} dropped (missing check-in)` : ''}${droppedRetryExhaustedCount > 0 ? `, ${droppedRetryExhaustedCount} dropped (max retries)` : ''}${alreadyCount > 0 ? `, ${alreadyCount} already-recorded` : ''}${missingCount > 0 ? `, ${missingCount} missing` : ''}${invalidCount > 0 ? `, ${invalidCount} invalid` : ''}.`,
                     showConfirmButton: false,
                     timer: 3200,
                     background: '#1e293b',
                     color: '#fff'
                 })
             } else {
-                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `${okCount} item(s) synced to database${alreadyCount > 0 ? `, ${alreadyCount} already-recorded` : ''}${missingCount > 0 ? `, ${missingCount} missing` : ''}.`, showConfirmButton: false, timer: 3000, background: '#1e293b', color: '#fff' })
+                const hasDroppedItems = droppedNotCheckedInCount > 0 || droppedRetryExhaustedCount > 0
+                Swal.fire({ toast: true, position: 'top-end', icon: hasDroppedItems ? 'warning' : 'success', title: `${okCount} item(s) synced to database${droppedNotCheckedInCount > 0 ? `, ${droppedNotCheckedInCount} dropped (missing check-in)` : ''}${droppedRetryExhaustedCount > 0 ? `, ${droppedRetryExhaustedCount} dropped (max retries)` : ''}${alreadyCount > 0 ? `, ${alreadyCount} already-recorded` : ''}${missingCount > 0 ? `, ${missingCount} missing` : ''}${invalidCount > 0 ? `, ${invalidCount} invalid` : ''}.`, showConfirmButton: false, timer: 3200, background: '#1e293b', color: '#fff' })
             }
         } catch (e) {
             console.error('manual sync failed', e)
-            scanQueueRef.current.unshift(...batch)
+            if (batch.length > 0) {
+                scanQueueRef.current.unshift(...batch)
+            }
             setQueueSize(scanQueueRef.current.length)
             setQueuedItems([...scanQueueRef.current])
             localStorage.setItem('scanQueue', JSON.stringify(scanQueueRef.current))
             setLastSyncReport({
                 at: new Date().toISOString(),
-                total: batch.length,
+                total: scanQueueRef.current.length,
                 synced: 0,
-                retry: batch.length,
+                retry: scanQueueRef.current.length,
                 retryNotCheckedIn: 0,
-                retryError: batch.length,
+                retryError: scanQueueRef.current.length,
+                droppedNotCheckedIn: 0,
+                droppedRetryExhausted: 0,
                 duplicate: 0,
                 alreadyToday: 0,
                 alreadyCheckedOut: 0,
                 missing: 0,
+                invalid: 0,
                 failed: true
             })
             Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Sync failed. Are you offline?', showConfirmButton: false, timer: 2000, background: '#1e293b', color: '#fff' })
+        } finally {
+            queueSyncInProgressRef.current = false
+            setIsQueueSyncing(false)
         }
     }, [mode, hasBackendConnection])
 
@@ -1742,7 +1933,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                         </span>
                                     </div>
                                     {queueSize > 0 && (
-                                        <button onClick={flushQueue} style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.75rem', background: '#C9A84C', color: '#0f172a', marginLeft: '1rem' }}>Sync Now</button>
+                                        <button disabled={isQueueSyncing} onClick={flushQueue} style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.75rem', background: '#C9A84C', color: '#0f172a', marginLeft: '1rem', cursor: isQueueSyncing ? 'not-allowed' : 'pointer', opacity: isQueueSyncing ? 0.7 : 1 }}>{isQueueSyncing ? 'Syncing...' : 'Sync Now'}</button>
                                     )}
                                 </div>
                                 <div style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'center' }}>
@@ -2321,8 +2512,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                         <div style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'white' }}>Offline Sync Queue ({queueSize})</div>
                                         <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Because scanning is completely instant, items only appear here if you lose internet connection.</div>
                                     </div>
-                                    <button onClick={flushQueue} style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: 'rgba(201,168,76,0.1)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.3)', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                        SYNC NOW
+                                    <button disabled={isQueueSyncing} onClick={flushQueue} style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: 'rgba(201,168,76,0.1)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.3)', fontWeight: 800, fontSize: '0.75rem', cursor: isQueueSyncing ? 'not-allowed' : 'pointer', transition: 'all 0.2s', opacity: isQueueSyncing ? 0.7 : 1 }}>
+                                        {isQueueSyncing ? 'SYNCING...' : 'SYNC NOW'}
                                     </button>
                                 </div>
                                 {queuedItems.length === 0 ? (
@@ -2333,9 +2524,17 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                 ) : (
                                     <ul style={{ marginTop: '1rem', listStyle: 'none', padding: 0, maxHeight: '300px', overflowY: 'auto' }}>
                                         {queuedItems.map((item, i) => (
-                                            <li key={i} style={{ padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between' }}>
-                                                <span style={{ fontWeight: 700, color: 'white' }}>{typeof item === 'string' ? 'Pending verification' : (item.name || 'Pending verification')}</span>
-                                                <span style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.3)' }}>{typeof item === 'string' ? item : item.uuid}</span>
+                                            <li key={i} style={{ padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                                                <div style={{ minWidth: 0 }}>
+                                                    <div style={{ fontWeight: 700, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{typeof item === 'string' ? 'Pending verification' : (item.name || 'Pending verification')}</div>
+                                                    {typeof item !== 'string' && (
+                                                        <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.15rem', lineHeight: 1.35 }}>
+                                                            Stage: {(item.failure_stage || 'network').toUpperCase()} • Reason: {String(item.failure_reason || 'temporary_issue').replace(/_/g, ' ')}
+                                                            {item.last_error ? ` • Error: ${item.last_error}` : ''}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span style={{ fontSize: '0.625rem', color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{typeof item === 'string' ? item : item.uuid}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -2351,10 +2550,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                                             <span style={{ fontWeight: 800, color: '#ffffff' }}>Total:</span> {lastSyncReport.total} • <span style={{ fontWeight: 800, color: '#10b981' }}>Synced:</span> {lastSyncReport.synced} • <span style={{ fontWeight: 800, color: '#f59e0b' }}>Retry:</span> {lastSyncReport.retry}
                                         </div>
                                         <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.62)', marginTop: '0.25rem', lineHeight: 1.45 }}>
-                                            Retry reasons — missing check-in: {lastSyncReport.retryNotCheckedIn}, DB/network error: {lastSyncReport.retryError}
+                                            Retry reasons — DB/network error: {lastSyncReport.retryError}
                                         </div>
                                         <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.62)', marginTop: '0.15rem', lineHeight: 1.45 }}>
-                                            Non-retry outcomes — already today: {lastSyncReport.alreadyToday}, duplicate active: {lastSyncReport.duplicate}, already checked out: {lastSyncReport.alreadyCheckedOut}, missing user: {lastSyncReport.missing}
+                                            Dropped (non-retry) — missing check-in: {lastSyncReport.droppedNotCheckedIn || 0}, max retries reached: {lastSyncReport.droppedRetryExhausted || 0}
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.62)', marginTop: '0.15rem', lineHeight: 1.45 }}>
+                                            Non-retry outcomes — already today: {lastSyncReport.alreadyToday}, duplicate active: {lastSyncReport.duplicate}, already checked out: {lastSyncReport.alreadyCheckedOut}, missing user: {lastSyncReport.missing}, invalid item: {lastSyncReport.invalid || 0}
                                         </div>
                                     </div>
                                 )}

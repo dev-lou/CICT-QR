@@ -92,6 +92,18 @@ const parseTimeToMinute = (value) => {
     return hour * 60 + minute
 }
 
+const hasRealCheckout = (row) => {
+    if (!row?.time_out || !row?.time_in) return false
+    const inMillis = new Date(row.time_in).getTime()
+    const outMillis = new Date(row.time_out).getTime()
+    if (!Number.isFinite(inMillis) || !Number.isFinite(outMillis)) return false
+    return outMillis > inMillis
+}
+
+const getTodayManilaDateKey = () => {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+}
+
 export default function AdminAttendanceFix() {
     const [loading, setLoading] = useState(true)
     const [savingId, setSavingId] = useState(null)
@@ -104,7 +116,6 @@ export default function AdminAttendanceFix() {
     const [registeredDate, setRegisteredDate] = useState('')
     const [timeStart, setTimeStart] = useState('')
     const [timeEnd, setTimeEnd] = useState('')
-    const [filtersApplied, setFiltersApplied] = useState(false)
 
     const resetFilters = useCallback(() => {
         setSearch('')
@@ -112,7 +123,6 @@ export default function AdminAttendanceFix() {
         setRegisteredDate('')
         setTimeStart('')
         setTimeEnd('')
-        setFiltersApplied(false)
     }, [])
 
     const fetchAllRows = useCallback(async (table, selectFields) => {
@@ -197,12 +207,19 @@ export default function AdminAttendanceFix() {
         return (students || []).filter((student) => !studentIdsWithCheckIn.has(student.id))
     }, [students, studentIdsWithCheckIn])
     const noCheckoutRows = useMemo(() => {
-        return rows.filter((row) => !row.time_out)
+        return rows.filter((row) => !hasRealCheckout(row))
     }, [rows])
+
+    const studentsById = useMemo(() => {
+        const map = new Map()
+        ;(students || []).forEach((student) => {
+            map.set(student.id, student)
+        })
+        return map
+    }, [students])
 
     const filteredRows = useMemo(() => {
         const term = search.trim().toLowerCase()
-        if (!filtersApplied) return []
 
         const startMinute = parseTimeToMinute(timeStart)
         const endMinute = parseTimeToMinute(timeEnd)
@@ -221,11 +238,14 @@ export default function AdminAttendanceFix() {
             return true
         }
 
-        if (statusFilter === 'no_checkin') {
-            const studentIdsWithCheckIn = new Set(rows.map((row) => row.student_id))
+        const buildNoCheckInRows = () => {
+            const rowsToEvaluate = registeredDate
+                ? rows.filter((row) => toDateKey(row.time_in) === registeredDate)
+                : rows
+
+            const idsWithCheckIn = new Set(rowsToEvaluate.map((row) => row.student_id))
             return (students || []).filter((student) => {
-                if (studentIdsWithCheckIn.has(student.id)) return false
-                if (!inDateTimeWindow(student.created_at)) return false
+                if (idsWithCheckIn.has(student.id)) return false
 
                 if (!term) return true
                 const name = String(student.full_name || '').toLowerCase()
@@ -248,40 +268,105 @@ export default function AdminAttendanceFix() {
             }))
         }
 
-        return rows.filter((row) => {
-            if (statusFilter === 'no_checkout' && row.time_out) return false
+        if (statusFilter === 'no_checkin') {
+            return buildNoCheckInRows()
+        }
+
+        const attendanceRows = rows.filter((row) => {
+            if (statusFilter === 'no_checkout' && hasRealCheckout(row)) return false
             if (!inDateTimeWindow(row.time_in)) return false
 
             if (!term) return true
-            const name = String(row.students?.full_name || '').toLowerCase()
-            const role = String(row.students?.role || '').toLowerCase()
-            const team = String(row.students?.team_name || '').toLowerCase()
+            const student = row.students || studentsById.get(row.student_id) || {}
+            const name = String(student.full_name || '').toLowerCase()
+            const role = String(student.role || '').toLowerCase()
+            const team = String(student.team_name || '').toLowerCase()
             return name.includes(term) || role.includes(term) || team.includes(term)
         })
-    }, [rows, students, search, statusFilter, registeredDate, timeStart, timeEnd, filtersApplied])
+
+        if (statusFilter === 'all') {
+            return [...attendanceRows, ...buildNoCheckInRows()]
+        }
+
+        return attendanceRows
+    }, [rows, students, studentsById, search, statusFilter, registeredDate, timeStart, timeEnd])
 
     const saveRow = async (row) => {
         if (!supabase) return
         const key = `${row.source}:${row.id}`
-        if (row.source === 'students') {
-            Swal.fire({
-                icon: 'info',
-                title: 'No attendance row to edit',
-                text: 'This user has no check-in record yet.',
-                confirmButtonColor: '#C9A84C'
-            })
-            return
-        }
         const editValue = editValues[key] || { time_in: '', time_out: '' }
 
         setSavingId(key)
         try {
-            const timeInPayload = manilaDateWithTimeToIso(row.time_in, editValue.time_in)
-            const baseForTimeOut = row.time_out || row.time_in
+            const dateKeyForSave = registeredDate || getTodayManilaDateKey()
+            const baseIsoForDate = new Date(`${dateKeyForSave}T00:00:00+08:00`).toISOString()
+
+            const baseIsoForTimeIn = row.time_in || baseIsoForDate
+            const timeInPayload = manilaDateWithTimeToIso(baseIsoForTimeIn, editValue.time_in)
+            const baseForTimeOut = row.time_out || timeInPayload || baseIsoForDate
             const timeOutPayload = editValue.time_out ? manilaDateWithTimeToIso(baseForTimeOut, editValue.time_out) : null
 
             if (!timeInPayload) {
                 throw new Error('Check-in value is required.')
+            }
+
+            if (timeOutPayload) {
+                const inMillis = new Date(timeInPayload).getTime()
+                const outMillis = new Date(timeOutPayload).getTime()
+                if (!Number.isFinite(inMillis) || !Number.isFinite(outMillis) || outMillis <= inMillis) {
+                    throw new Error('Check-out must be later than check-in.')
+                }
+            }
+
+            if (row.source === 'students') {
+                const role = String(row.students?.role || '').toLowerCase()
+                const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(role)
+                const table = isStaff ? 'staff_logbook' : 'logbook'
+
+                const { data: inserted, error: insertErr } = await supabase
+                    .from(table)
+                    .insert({
+                        student_id: row.student_id,
+                        time_in: timeInPayload,
+                        time_out: timeOutPayload
+                    })
+                    .select('id, student_id, time_in, time_out')
+                    .single()
+
+                if (insertErr) throw insertErr
+
+                const insertedRow = {
+                    ...(inserted || {}),
+                    source: table,
+                    students: {
+                        full_name: row.students?.full_name,
+                        role: row.students?.role,
+                        team_name: row.students?.team_name,
+                        uuid: row.students?.uuid,
+                        created_at: row.students?.created_at
+                    }
+                }
+
+                setRows((prev) => [insertedRow, ...prev].sort((a, b) => new Date(b.time_in).getTime() - new Date(a.time_in).getTime()))
+                setEditValues((prev) => ({
+                    ...prev,
+                    [`${table}:${inserted.id}`]: {
+                        time_in: toLocalTimeValue(inserted.time_in),
+                        time_out: toLocalTimeValue(inserted.time_out)
+                    }
+                }))
+
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: 'Attendance row created',
+                    showConfirmButton: false,
+                    timer: 1800,
+                    background: '#1e293b',
+                    color: '#fff'
+                })
+                return
             }
 
             const { error } = await supabase
@@ -516,23 +601,15 @@ export default function AdminAttendanceFix() {
                         onChange={(e) => setTimeEnd(e.target.value)}
                         style={{ padding: '0.55rem 0.7rem', borderRadius: '0.7rem', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)', color: 'white' }}
                     />
-                    <button
-                        onClick={() => setFiltersApplied(true)}
-                        style={{ padding: '0.55rem 0.9rem', borderRadius: '0.75rem', border: '1px solid rgba(201,168,76,0.35)', background: 'rgba(201,168,76,0.15)', color: '#C9A84C', cursor: 'pointer', fontWeight: 800 }}
-                    >
-                        Show Results
-                    </button>
                 </div>
 
                 <div style={{ marginBottom: '0.8rem', fontSize: '0.78rem', color: 'rgba(255,255,255,0.65)' }}>
-                    {filtersApplied ? `Showing ${filteredRows.length} record(s)` : 'Set filters and click Show Results (or Clear Filters then Show Results)'}
+                    {`Showing ${filteredRows.length} record(s)`}
                 </div>
 
                 <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem', overflow: 'hidden', background: 'rgba(30,41,59,0.35)', boxShadow: '0 18px 45px rgba(0,0,0,0.25)' }}>
                     {loading ? (
                         <div style={{ padding: '2rem', textAlign: 'center', color: '#C9A84C', fontWeight: 800 }}>Loading attendance records...</div>
-                    ) : !filtersApplied ? (
-                        <div style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.65)', fontWeight: 700 }}>Set your filters and click Show Results.</div>
                     ) : filteredRows.length === 0 ? (
                         <div style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.65)', fontWeight: 700 }}>No matching records.</div>
                     ) : (
@@ -548,15 +625,17 @@ export default function AdminAttendanceFix() {
                                 <tbody>
                                     {filteredRows.map((row, index) => {
                                         const key = `${row.source}:${row.id}`
-                                        const state = row.source === 'students' ? 'No Check-in' : (!row.time_out ? 'No Check-out' : 'Complete')
+                                        const rowStudent = row.students || studentsById.get(row.student_id) || {}
+                                        const isSyntheticNoCheckIn = row.source === 'students'
+                                        const state = row.source === 'students' ? 'No Check-in' : (!hasRealCheckout(row) ? 'No Check-out' : 'Complete')
                                         const stateColor = state === 'No Check-in' ? '#f59e0b' : state === 'No Check-out' ? '#ef4444' : '#10b981'
                                         return (
                                             <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: index % 2 === 0 ? 'rgba(15,23,42,0.35)' : 'rgba(15,23,42,0.2)' }}>
-                                                <td style={{ padding: '0.65rem', fontWeight: 700, wordBreak: 'break-word' }}>{row.students?.full_name || 'Unknown'}</td>
-                                                <td style={{ padding: '0.65rem', textTransform: 'capitalize' }}>{row.students?.role || '—'}</td>
-                                                <td style={{ padding: '0.65rem', wordBreak: 'break-word' }}>{row.students?.team_name || '—'}</td>
+                                                <td style={{ padding: '0.65rem', fontWeight: 700, wordBreak: 'break-word' }}>{rowStudent.full_name || 'Unknown'}</td>
+                                                <td style={{ padding: '0.65rem', textTransform: 'capitalize' }}>{rowStudent.role || '—'}</td>
+                                                <td style={{ padding: '0.65rem', wordBreak: 'break-word' }}>{rowStudent.team_name || '—'}</td>
                                                 <td style={{ padding: '0.65rem' }}>{formatDateTime(row.time_in)}</td>
-                                                <td style={{ padding: '0.65rem', color: row.time_out ? 'white' : '#f59e0b', fontWeight: 700 }}>{formatDateTime(row.time_out)}</td>
+                                                <td style={{ padding: '0.65rem', color: hasRealCheckout(row) ? 'white' : '#f59e0b', fontWeight: 700 }}>{formatDateTime(row.time_out)}</td>
                                                 <td style={{ padding: '0.65rem' }}>
                                                     <span style={{ padding: '0.2rem 0.52rem', borderRadius: '999px', border: `1px solid ${stateColor}55`, color: stateColor, fontWeight: 800, fontSize: '0.72rem' }}>{state}</span>
                                                 </td>
@@ -583,12 +662,12 @@ export default function AdminAttendanceFix() {
                                                             disabled={savingId === key || deletingId === key}
                                                             style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '0.55rem', border: 'none', background: '#C9A84C', color: '#0f172a', fontWeight: 800, cursor: savingId === key || deletingId === key ? 'not-allowed' : 'pointer', opacity: savingId === key || deletingId === key ? 0.6 : 1 }}
                                                         >
-                                                            {savingId === key ? 'Saving...' : 'Save'}
+                                                            {isSyntheticNoCheckIn ? (savingId === key ? 'Adding...' : 'Add Row') : (savingId === key ? 'Saving...' : 'Save')}
                                                         </button>
                                                         <button
                                                             onClick={() => deleteRow(row)}
-                                                            disabled={deletingId === key || savingId === key || row.source === 'students'}
-                                                            style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '0.55rem', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(239,68,68,0.15)', color: '#fecaca', fontWeight: 800, cursor: deletingId === key || savingId === key || row.source === 'students' ? 'not-allowed' : 'pointer', opacity: deletingId === key || savingId === key || row.source === 'students' ? 0.6 : 1 }}
+                                                            disabled={deletingId === key || savingId === key || isSyntheticNoCheckIn}
+                                                            style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '0.55rem', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(239,68,68,0.15)', color: '#fecaca', fontWeight: 800, cursor: deletingId === key || savingId === key || isSyntheticNoCheckIn ? 'not-allowed' : 'pointer', opacity: deletingId === key || savingId === key || isSyntheticNoCheckIn ? 0.6 : 1 }}
                                                         >
                                                             {deletingId === key ? 'Deleting...' : 'Delete'}
                                                         </button>

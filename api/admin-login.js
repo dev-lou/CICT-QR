@@ -1,4 +1,3 @@
-import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -31,24 +30,11 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid email or password.' })
     }
 
-    const token = crypto.randomBytes(32).toString('hex')
-    const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
-
-    const { error: sessionErr } = await supabase
-      .from('admin_sessions')
-      .insert([{ token, admin_id: admin.id, expires_at: expiresAt }])
-
-    if (sessionErr) {
-      return res.status(500).json({ error: 'Failed to create admin session.' })
-    }
-
     return res.status(200).json({
       session: {
         id: admin.id,
         email: admin.email,
-        role: String(admin.role || 'admin').toLowerCase(),
-        token,
-        expires_at: expiresAt
+        role: String(admin.role || 'admin').toLowerCase()
       }
     })
   } catch (err) {
