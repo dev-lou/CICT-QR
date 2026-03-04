@@ -1088,7 +1088,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
             const results = await processScanBatch(batch, mode)
 
-            const maxRetryAttempts = 3
+            const maxRetryAttempts = 10
             const retryCandidates = results
                 .filter((result) => result.status === 'error')
                 .map((result) => {
