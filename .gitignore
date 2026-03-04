@@ -26,6 +26,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Local-only serverless experiment
-api/scan.js
