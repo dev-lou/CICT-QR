@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Html5Qrcode } from 'html5-qrcode'
 import { supabase } from '../lib/supabase'
 import Swal from 'sweetalert2'
-import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// XLSX and jsPDF are loaded on-demand when user clicks Export (saves ~1.4 MB from initial bundle)
+const loadXLSX = () => import('xlsx')
+const loadPdfLibs = () => Promise.all([import('jspdf'), import('jspdf-autotable')])
 
 // ─── XSS-safe HTML escaping ─────────────────────────────────────────────────
 const _esc = (s) => {
@@ -335,12 +335,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
     }, [fetchLogbook])
 
     useEffect(() => { setCurrentPage(1) }, [logFilter, dayFilter, activeTab, logSearch])
-    useEffect(() => {
-        const handler = setTimeout(() => {
-            if (activeTab === 'logbook') fetchLogbook()
-        }, 500)
-        return () => clearTimeout(handler)
-    }, [logSearch, activeTab, fetchLogbook])
+    // Search filtering is done client-side via useMemo — no need to re-fetch from DB on every keystroke
 
     // ─── Staff Logbook ───────────────────────────────────────────────────────────
     const fetchStaffLogbook = useCallback(async () => {
@@ -380,12 +375,12 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     const fetchStats = useCallback(async () => {
         if (!supabase) return
-        const [{ data: ud }, { data: td }] = await Promise.all([
-            supabase.from('students').select('id'),
-            supabase.from('teams').select('id')
+        const [{ count: uc }, { count: tc }] = await Promise.all([
+            supabase.from('students').select('id', { count: 'exact', head: true }),
+            supabase.from('teams').select('id', { count: 'exact', head: true })
         ])
-        setUsers(ud || [])
-        setTeams(td || [])
+        setUsers(Array.from({ length: uc || 0 }))
+        setTeams(Array.from({ length: tc || 0 }))
     }, [])
 
     useEffect(() => {
@@ -1207,39 +1202,40 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         if (!iso) return ''
         return new Date(iso).toLocaleDateString('en-CA', { timeZone: TZ }) // en-CA = YYYY-MM-DD format
     }
-    // Unique event days derived from logbook data, sorted newest first
-    const eventDays = [...new Set(logbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
+    // Unique event days derived from logbook data, sorted newest first — memoised to avoid recalc on every render
+    const eventDays = useMemo(() => [...new Set(logbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse(), [logbook])
 
-    const filteredLog = logbook.filter((r) => {
+    const filteredLog = useMemo(() => logbook.filter((r) => {
         const studentName = (r.students?.full_name || '').toLowerCase()
         if (logSearch.trim() && !studentName.includes(logSearch.trim().toLowerCase())) return false
         if (dayFilter !== 'all' && dayKey(r.time_in) !== dayFilter) return false
         if (logFilter === 'in') return !r.time_out
         if (logFilter === 'out') return !!r.time_out
         return true
-    })
+    }), [logbook, logSearch, dayFilter, logFilter])
 
-    // Staff filter logic (moved from render scope)
-    const staffEventDays = [...new Set(staffLogbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse()
-    const filteredStaff = staffLogbook.filter((r) => {
+    // Staff filter logic — memoised
+    const staffEventDays = useMemo(() => [...new Set(staffLogbook.map((r) => dayKey(r.time_in)).filter(Boolean))].sort().reverse(), [staffLogbook])
+    const filteredStaff = useMemo(() => staffLogbook.filter((r) => {
         const staffName = (r.students?.full_name || '').toLowerCase()
         if (staffSearch.trim() && !staffName.includes(staffSearch.trim().toLowerCase())) return false
         if (staffDayFilter !== 'all' && dayKey(r.time_in) !== staffDayFilter) return false
         if (staffLogFilter === 'in') return !r.time_out
         if (staffLogFilter === 'out') return !!r.time_out
         return true
-    })
+    }), [staffLogbook, staffSearch, staffDayFilter, staffLogFilter])
 
     const totalPages = Math.ceil(filteredLog.length / pageSize)
-    const paginatedLog = filteredLog.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+    const paginatedLog = useMemo(() => filteredLog.slice((currentPage - 1) * pageSize, currentPage * pageSize), [filteredLog, currentPage])
 
     const staffTotalPages = Math.ceil(filteredStaff.length / pageSize)
-    const paginatedStaff = filteredStaff.slice((staffPage - 1) * pageSize, staffPage * pageSize)
+    const paginatedStaff = useMemo(() => filteredStaff.slice((staffPage - 1) * pageSize, staffPage * pageSize), [filteredStaff, staffPage])
 
     // ─── Export helpers ─────────────────────────────────────────────────────────
     const exportLabel = dayFilter === 'all' ? 'All Days' : fmtDateFull(dayFilter + 'T00:00:00')
 
-    const exportExcel = () => {
+    const exportExcel = async () => {
+        const XLSX = await loadXLSX()
         const chunkSize = 40
         const numChunks = Math.ceil(filteredLog.length / chunkSize)
         for (let i = 0; i < numChunks; i++) {
@@ -1261,7 +1257,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
     }
 
-    const exportPDF = () => {
+    const exportPDF = async () => {
+        const [{ default: jsPDF }, { default: autoTable }] = await loadPdfLibs()
         const chunkSize = 40
         const numChunks = Math.ceil(filteredLog.length / chunkSize)
         for (let i = 0; i < numChunks; i++) {
@@ -1299,7 +1296,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
     const exportStaffLabel = staffDayFilter === 'all' ? 'All Days' : fmtDateFull(staffDayFilter + 'T00:00:00')
 
-    const exportExcelStaff = () => {
+    const exportExcelStaff = async () => {
+        const XLSX = await loadXLSX()
         const chunkSize = 40
         const numChunks = Math.ceil(filteredStaff.length / chunkSize)
         for (let i = 0; i < numChunks; i++) {
@@ -1322,7 +1320,8 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         }
     }
 
-    const exportPDFStaff = () => {
+    const exportPDFStaff = async () => {
+        const [{ default: jsPDF }, { default: autoTable }] = await loadPdfLibs()
         const chunkSize = 40
         const numChunks = Math.ceil(filteredStaff.length / chunkSize)
         for (let i = 0; i < numChunks; i++) {

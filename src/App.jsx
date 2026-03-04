@@ -1,17 +1,27 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import Login from './components/Login'
 import Register from './components/Register'
 import Dashboard from './components/Dashboard'
-import LogbookPage from './components/LogbookPage'
-import AdminLogin from './components/AdminLogin'
-import AdminScanner from './components/AdminScanner'
-import AdminManageData from './components/AdminManageData'
-import Scoreboard from './components/Scoreboard'
-import ScoreHistory from './components/ScoreHistory'
-import PublicScoreboard from './components/PublicScoreboard'
 import { supabase } from './lib/supabase'
 import Swal from 'sweetalert2'
+
+// Lazy-load heavy components — only downloaded when the route is visited
+const LogbookPage = lazy(() => import('./components/LogbookPage'))
+const AdminLogin = lazy(() => import('./components/AdminLogin'))
+const AdminScanner = lazy(() => import('./components/AdminScanner'))
+const AdminManageData = lazy(() => import('./components/AdminManageData'))
+const Scoreboard = lazy(() => import('./components/Scoreboard'))
+const ScoreHistory = lazy(() => import('./components/ScoreHistory'))
+const PublicScoreboard = lazy(() => import('./components/PublicScoreboard'))
+
+// Minimal loading spinner for lazy routes
+const LazyFallback = () => (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a' }}>
+        <div style={{ width: 36, height: 36, border: '3px solid rgba(201,168,76,0.2)', borderTopColor: '#C9A84C', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+)
 
 // ─── XSS-safe HTML escaping ─────────────────────────────────────────────────
 const _esc = (s) => {
@@ -229,10 +239,10 @@ function StudentRoot() {
     )
 }
 
-import AdminAuditLog from './components/AdminAuditLog'
-import AdminPointTally from './components/AdminPointTally'
-import AdminTeamExport from './components/AdminTeamExport'
-import AdminAttendanceFix from './components/AdminAttendanceFix'
+const AdminAuditLog = lazy(() => import('./components/AdminAuditLog'))
+const AdminPointTally = lazy(() => import('./components/AdminPointTally'))
+const AdminTeamExport = lazy(() => import('./components/AdminTeamExport'))
+const AdminAttendanceFix = lazy(() => import('./components/AdminAttendanceFix'))
 
 function ExecutiveFixRoute() {
     const gatewayUuid = (() => {
@@ -490,16 +500,18 @@ function LogbookRoute() {
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
     return (
-        <Routes>
-            <Route path="/" element={<StudentRoot />} />
-            <Route path="/logbook" element={<LogbookRoute />} />
-            <Route path="/admin" element={<AdminRoot />} />
-            <Route path="/admin-attendance-fix-2026-hidden" element={<ExecutiveFixRoute />} />
-            <Route path="/scoreboard" element={<PublicScoreboard />} />
-            <Route path="/scoreboard-itweek2026" element={<Scoreboard />} />
-            <Route path="/score-history" element={<ScoreHistory />} />
-            <Route path="/official-standings-2026-secure" element={<AdminPointTally isPublic={true} />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<LazyFallback />}>
+            <Routes>
+                <Route path="/" element={<StudentRoot />} />
+                <Route path="/logbook" element={<LogbookRoute />} />
+                <Route path="/admin" element={<AdminRoot />} />
+                <Route path="/admin-attendance-fix-2026-hidden" element={<ExecutiveFixRoute />} />
+                <Route path="/scoreboard" element={<PublicScoreboard />} />
+                <Route path="/scoreboard-itweek2026" element={<Scoreboard />} />
+                <Route path="/score-history" element={<ScoreHistory />} />
+                <Route path="/official-standings-2026-secure" element={<AdminPointTally isPublic={true} />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </Suspense>
     )
 }
