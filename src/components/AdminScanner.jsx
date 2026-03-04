@@ -406,37 +406,16 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
         })
     }, [playBeep])
 
-    const getAdminHeaders = useCallback(() => {
-        try {
-            const raw = localStorage.getItem('admin_session')
-            if (!raw) return null
-            const session = JSON.parse(raw)
-            if (!session?.email || !session?.id) return null
-            return {
-                'x-admin-email': String(session.email).trim().toLowerCase(),
-                'x-admin-id': String(session.id)
-            }
-        } catch {
-            return null
-        }
-    }, [])
-
     const sendBatchToScanApi = useCallback(async (entries) => {
         try {
             if (!Array.isArray(entries) || entries.length === 0) return []
-
-            const adminHeaders = getAdminHeaders()
-            if (!adminHeaders) {
-                console.warn('[ScanAPI] No admin session found in localStorage')
-                return null
-            }
 
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), 15000)
 
             const response = await fetch('/api/scan', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...adminHeaders },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ entries }),
                 signal: controller.signal
             })
@@ -462,7 +441,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             }
             return null
         }
-    }, [getAdminHeaders])
+    }, [])
 
     const queueScanForRetry = useCallback((uuid, scanMode, name = 'Pending verification', failureMeta = null) => {
         const alreadyQueued = scanQueueRef.current.some((entry) => {

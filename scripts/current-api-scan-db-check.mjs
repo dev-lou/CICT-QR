@@ -37,8 +37,8 @@ function createMockRes() {
   }
 }
 
-async function invokeScanHandler(handler, body, adminHeaders = {}) {
-  const req = { method: 'POST', body, headers: adminHeaders }
+async function invokeScanHandler(handler, body) {
+  const req = { method: 'POST', body, headers: {} }
   const res = createMockRes()
   await handler(req, res)
   return { statusCode: res.statusCode, payload: res.payload }
@@ -69,17 +69,6 @@ async function run() {
 
   const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-  // Fetch a real admin to authenticate with
-  const { data: admins, error: adminFetchErr } = await supabase
-    .from('admins')
-    .select('id, email')
-    .limit(1)
-
-  if (adminFetchErr) throw new Error('Admin fetch error: ' + adminFetchErr.message)
-  const admin = Array.isArray(admins) ? admins[0] : admins
-  if (!admin) throw new Error('No admin found in admins table for test auth')
-  const adminHeaders = { 'x-admin-email': admin.email, 'x-admin-id': String(admin.id) }
-
   const stamp = Date.now()
   const username = `api_scan_test_${stamp}`
   const fullName = `API Scan Test ${stamp}`
@@ -104,12 +93,12 @@ async function run() {
 
     const checkIn = await invokeScanHandler(handler, {
       entries: [{ idx: 0, uuid: student.uuid, mode: 'time-in', queued_at: new Date().toISOString() }]
-    }, adminHeaders)
+    })
     assertStatusOk(checkIn, 'Check-in')
 
     const checkOut = await invokeScanHandler(handler, {
       entries: [{ idx: 0, uuid: student.uuid, mode: 'time-out', queued_at: new Date().toISOString() }]
-    }, adminHeaders)
+    })
     assertStatusOk(checkOut, 'Check-out')
 
     const { data: latestRows, error: verifyErr } = await supabase
