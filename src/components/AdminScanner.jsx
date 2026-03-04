@@ -491,12 +491,20 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 body: JSON.stringify({ entries })
             })
 
-            if (!response.ok) return null
+            if (!response.ok) {
+                const errText = await response.text().catch(() => '')
+                console.warn(`[ScanAPI] HTTP ${response.status}: ${errText.slice(0, 300)}`)
+                return null
+            }
 
             const body = await response.json().catch(() => ({}))
-            if (!Array.isArray(body?.results)) return null
+            if (!Array.isArray(body?.results)) {
+                console.warn('[ScanAPI] unexpected response shape:', body)
+                return null
+            }
             return body.results
-        } catch {
+        } catch (err) {
+            console.warn('[ScanAPI] fetch failed:', err?.message || err)
             return null
         }
     }, [])
@@ -705,6 +713,7 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
                 const table = isStaff ? 'staff_logbook' : 'logbook'
                 let dbStatus = 'ok'
 
+                // ── PRIMARY: Write via server API (service-role, bypasses RLS) ──
                 const apiResults = await sendBatchToScanApi([
                     { idx: 0, uuid, mode, queued_at: new Date().toISOString() }
                 ])
@@ -713,100 +722,13 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
 
                 if (apiHandled) {
                     dbStatus = apiResult.status
-                }
-
-                try {
-                    if (!apiHandled && mode === 'time-in') {
-                        const { todayStartUTC, todayEndUTC } = getManilaDayBoundsUTC()
-                        const { data: existing } = await supabase
-                            .from(table).select('id, time_in')
-                            .eq('student_id', student.id)
-                            .is('time_out', null)
-
-                        if (existing && existing.length > 0) {
-                            const todayActive = existing.filter(e => e.time_in >= todayStartUTC && e.time_in <= todayEndUTC)
-                            const staleActive = existing.filter(e => e.time_in < todayStartUTC)
-
-                            if (staleActive.length > 0) {
-                                await supabase.from(table)
-                                    .update({ time_out: staleActive[0].time_in })
-                                    .in('id', staleActive.map(e => e.id))
-                            }
-
-                            if (todayActive.length > 0) dbStatus = 'duplicate'
-                        }
-
-                        if (dbStatus === 'ok') {
-                            const { data: todayRecords } = await supabase.from(table)
-                                .select('id').eq('student_id', student.id)
-                                .gte('time_in', todayStartUTC).lte('time_in', todayEndUTC).limit(1)
-
-                            if (todayRecords && todayRecords.length > 0) dbStatus = 'already_scanned_today'
-                        }
-
-                        if (dbStatus === 'ok') {
-                            const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
-                            if (insertErr) throw insertErr
-                            supabase.from('audit_logs').insert([{ student_id: student.id, action: 'SCAN', details: { mode: 'time-in', uuid } }]).catch(() => {})
-                        }
-                    } else if (!apiHandled) {
-                        const todayKey = getTodayManilaDayKey()
-                        let active = null
-                        for (let attempt = 0; attempt < 3; attempt += 1) {
-                            const { data: activeRows } = await supabase.from(table)
-                                .select('id, time_in')
-                                .eq('student_id', student.id)
-                                .is('time_out', null)
-                                .order('time_in', { ascending: false })
-                                .limit(20)
-
-                            const todayActive = (activeRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
-                            const staleActive = (activeRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) !== todayKey)
-
-                            if (todayActive.length === 0 && staleActive.length > 0) {
-                                await supabase.from(table)
-                                    .update({ time_out: staleActive[0].time_in })
-                                    .in('id', staleActive.map((row) => row.id))
-                                    .then(() => { })
-                                    .catch(() => { })
-                            }
-
-                            if (todayActive.length > 0) {
-                                active = todayActive
-                                break
-                            }
-
-                            if (attempt < 2) {
-                                await new Promise((resolve) => setTimeout(resolve, 350))
-                            }
-                        }
-
-                        if (active && active.length > 0) {
-                            const { error: updateErr } = await supabase.from(table)
-                                .update({ time_out: new Date().toISOString() }).eq('id', active[0].id)
-                            if (updateErr) throw updateErr
-                            supabase.from('audit_logs').insert([{ student_id: student.id, action: 'SCAN_OUT', details: { uuid } }]).catch(() => {})
-                        } else {
-                            const todayKey = getTodayManilaDayKey()
-                            const { data: lastOutRows } = await supabase
-                                .from(table)
-                                .select('id, time_in, time_out')
-                                .eq('student_id', student.id)
-                                .not('time_out', 'is', null)
-                                .order('time_out', { ascending: false })
-                                .limit(20)
-
-                            const todayLastOut = (lastOutRows || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === todayKey)
-                            dbStatus = todayLastOut.length > 0 ? 'already_checked_out' : 'not_checked_in'
-                        }
-                    }
-                } catch (dbErr) {
-                    console.error('DB insert failed:', dbErr)
+                } else {
+                    // API unreachable — queue for retry (direct DB writes blocked by RLS)
+                    console.warn('[Scanner] API unreachable, queueing scan for retry')
                     dbStatus = 'error'
                 }
 
-                // Recovery guard: mobile networks may fail the response even if DB already committed.
-                // If we can verify the record now exists, treat as success to avoid false failure modal.
+                // Recovery guard: if API said error, verify the record isn't actually there
                 if (dbStatus === 'error') {
                     try {
                         if (mode === 'time-in') {
@@ -1120,149 +1042,15 @@ export default function AdminScanner({ onLogout, onNavigateManageData, onNavigat
             })
         }
 
-        const results = []
-        for (const item of batch) {
-            try {
-                const rawUuid = typeof item === 'string' ? item : item?.uuid
-                const trimmed = rawUuid ? String(rawUuid).trim() : ''
-                const modeForItem = typeof item === 'string' ? currentMode : (item?.mode || currentMode)
-                const queuedDayKey = typeof item === 'string' ? '' : getManilaDayKeyFromIso(item?.queued_at)
-                const referenceDayKey = queuedDayKey || getTodayManilaDayKey()
-
-                if (!trimmed) {
-                    results.push({ item, uuid: '', status: 'invalid_item' })
-                    continue
-                }
-
-                const { data: student, error: studentErr } = await supabase
-                    .from('students')
-                    .select('id, full_name, role')
-                    .eq('uuid', trimmed)
-                    .single()
-
-                if (studentErr) {
-                    if (isNoRowsError(studentErr)) {
-                        results.push({ item, uuid: trimmed, status: 'missing' })
-                    } else {
-                        results.push({ item, uuid: trimmed, status: 'error', message: studentErr.message })
-                    }
-                    continue
-                }
-
-                if (!student) {
-                    results.push({ item, uuid: trimmed, status: 'missing' })
-                    continue
-                }
-
-                const isStaff = ['leader', 'facilitator', 'executive', 'officer'].includes(student.role)
-                const table = isStaff ? 'staff_logbook' : 'logbook'
-
-                if (modeForItem === 'time-in') {
-                    const { data: existing, error: existingErr } = await supabase
-                        .from(table)
-                        .select('id, time_in')
-                        .eq('student_id', student.id)
-                        .is('time_out', null)
-                    if (existingErr) throw existingErr
-
-                    if (existing && existing.length > 0) {
-                        const dayMatchedActive = existing.filter((entry) => getManilaDayKeyFromIso(entry.time_in) === referenceDayKey)
-                        const staleActive = existing.filter((entry) => getManilaDayKeyFromIso(entry.time_in) !== referenceDayKey)
-
-                        if (staleActive.length > 0) {
-                            const staleIds = staleActive.map((entry) => entry.id)
-                            await supabase.from(table)
-                                .update({ time_out: staleActive[0].time_in })
-                                .in('id', staleIds)
-                                .then(() => { })
-                                .catch(() => { })
-                        }
-
-                        if (dayMatchedActive.length > 0) {
-                            results.push({ item, uuid: trimmed, status: 'duplicate' })
-                            continue
-                        }
-                    }
-
-                    const { data: dayRecords, error: dayErr } = await supabase.from(table)
-                        .select('id')
-                        .eq('student_id', student.id)
-                        .gte('time_in', `${referenceDayKey}T00:00:00+08:00`)
-                        .lte('time_in', `${referenceDayKey}T23:59:59.999+08:00`)
-                        .limit(1)
-                    if (dayErr) throw dayErr
-
-                    if (dayRecords && dayRecords.length > 0) {
-                        results.push({ item, uuid: trimmed, status: 'already_scanned_today' })
-                        continue
-                    }
-
-                    const { error: insertErr } = await supabase.from(table).insert([{ student_id: student.id }])
-                    if (insertErr) {
-                        results.push({ item, uuid: trimmed, status: 'error', message: insertErr.message })
-                    } else {
-                        results.push({ item, uuid: trimmed, status: 'ok' })
-                        await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN', details: { mode: modeForItem, uuid: trimmed } }]).catch(() => { })
-                    }
-                } else {
-                    const { data: active, error: activeErr } = await supabase.from(table)
-                        .select('id, time_in')
-                        .eq('student_id', student.id)
-                        .is('time_out', null)
-                        .order('time_in', { ascending: false })
-                        .limit(20)
-                    if (activeErr) throw activeErr
-
-                    const dayMatchedActive = (active || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === referenceDayKey)
-                    const staleActive = (active || []).filter((row) => getManilaDayKeyFromIso(row.time_in) !== referenceDayKey)
-
-                    if (dayMatchedActive.length === 0 && staleActive.length > 0) {
-                        await supabase.from(table)
-                            .update({ time_out: staleActive[0].time_in })
-                            .in('id', staleActive.map((row) => row.id))
-                            .then(() => { })
-                            .catch(() => { })
-                    }
-
-                    if (dayMatchedActive.length > 0) {
-                        const { error: updateErr } = await supabase
-                            .from(table)
-                            .update({ time_out: new Date().toISOString() })
-                            .eq('id', dayMatchedActive[0].id)
-                        if (updateErr) {
-                            results.push({ item, uuid: trimmed, status: 'error', message: updateErr.message })
-                        } else {
-                            results.push({ item, uuid: trimmed, status: 'ok' })
-                            await supabase.from('audit_logs').insert([{ student_id: student.id, action: 'BATCH_SCAN_OUT', details: { uuid: trimmed } }]).catch(() => { })
-                        }
-                    } else {
-                        const { data: lastOut, error: lastOutErr } = await supabase
-                            .from(table)
-                            .select('id, time_in, time_out')
-                            .eq('student_id', student.id)
-                            .not('time_out', 'is', null)
-                            .order('time_out', { ascending: false })
-                            .limit(20)
-                        if (lastOutErr) throw lastOutErr
-
-                        const dayMatchedLastOut = (lastOut || []).filter((row) => getManilaDayKeyFromIso(row.time_in) === referenceDayKey)
-                        if (dayMatchedLastOut.length > 0) {
-                            results.push({ item, uuid: trimmed, status: 'already_checked_out' })
-                        } else {
-                            results.push({ item, uuid: trimmed, status: 'not_checked_in' })
-                        }
-                    }
-                }
-            } catch (batchErr) {
-                results.push({
-                    item,
-                    uuid: (typeof item === 'string' ? item : item?.uuid) || '',
-                    status: 'error',
-                    message: batchErr?.message || 'Batch processing error'
-                })
-            }
-        }
-        return results
+        // API path failed — direct DB writes are blocked by RLS without service_role.
+        // Return all items as errors so they stay in queue for API retry.
+        console.warn('[processScanBatch] API unavailable, marking all items as error for retry')
+        return batch.map((item) => ({
+            item,
+            uuid: (typeof item === 'string' ? item : item?.uuid) || '',
+            status: 'error',
+            message: 'Server API unreachable — will retry'
+        }))
     }
 
     // Restore offline queue on mount
